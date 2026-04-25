@@ -1,6 +1,7 @@
 import streamlit as st
+from datetime import date
 from utils import hent_varer, lagre_varer
-from utils import get_varer_clean, lagre_varer
+import uuid
 
 st.title("➕ Legg til vare")
 
@@ -30,9 +31,11 @@ if st.button("Legg til"):
         st.warning("Du har allerede denne varen 😄")
     else:
         varer.append({
-            "navn": ny_vare,
-            "kategori": kategori
-        })
+    "id": str(uuid.uuid4()),
+    "navn": ny_vare,
+    "kategori": kategori,
+    "dato_lagt_til": date.today().isoformat()
+})  
 
         lagre_varer(varer)
         st.success("Lagt til!")

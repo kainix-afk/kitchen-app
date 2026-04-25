@@ -1,6 +1,7 @@
 import streamlit as st
 from utils import hent_varer, lagre_varer
 import uuid
+from datetime import datetime
 
 st.title("🏠 Varer hjemme")
 
@@ -72,8 +73,23 @@ for kategori, items in grupper.items():
             col1, col2 = st.columns([4, 1])
 
             with col1:
-                st.write(f"• {v['navn'].capitalize()}")
+                raw_dato = v.get("dato_lagt_til")
 
+                if raw_dato:
+                    dato_obj = datetime.fromisoformat(raw_dato)
+                    dager = (datetime.now() - dato_obj).days
+                    dato_formatert = dato_obj.strftime("%d.%m.%Y")
+                else:
+                    dager = 0
+                    dato_formatert = "ukjent dato"
+
+                tekst = f"• {v['navn'].capitalize()}"
+
+                if dager > 7:
+                    tekst += " ⚠️"
+
+                st.write(tekst)
+                st.caption(f"Lagt til: {dato_formatert} ({dager} dager siden)")
             with col2:
                 checked = v["id"] in st.session_state.valgte_varer
 
