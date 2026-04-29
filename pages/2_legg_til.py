@@ -1,11 +1,18 @@
-import streamlit as st
-from datetime import date
+)import streamlit as st
+from datetime import date, timedelta
 from utils import hent_varer, lagre_varer
 import uuid
 
 st.title("➕ Legg til vare")
 
 navn = st.text_input("Vare")
+
+dato = st.date_input("Når la du den inn?", value=date.today())
+
+holdbar_til = st.date_input(
+    "Holdbar til",
+    value=date.today() + timedelta(days=7)
+)
 
 kategori = st.selectbox(
     "Kategori",
@@ -31,11 +38,12 @@ if st.button("Legg til"):
         st.warning("Du har allerede denne varen 😄")
     else:
         varer.append({
-    "id": str(uuid.uuid4()),
-    "navn": ny_vare,
-    "kategori": kategori,
-    "dato_lagt_til": date.today().isoformat()
-})  
+            "id": str(uuid.uuid4()),
+            "navn": ny_vare,
+            "kategori": kategori,
+            "dato_lagt_til": date.today().isoformat(),
+            "holdbar_til": holdbar_til.isoformat()
+            })
 
         lagre_varer(varer)
         st.success("Lagt til!")

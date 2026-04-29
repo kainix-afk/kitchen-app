@@ -3,6 +3,18 @@ import os
 import streamlit as st
 
 FIL = "varer.json"
+KASTET_FIL = "kastet.json"
+
+def hent_kastet():
+    if not os.path.exists(KASTET_FIL):
+        return []
+
+    with open(KASTET_FIL, "r", encoding="utf-8") as fil:
+        return json.load(fil)
+
+def lagre_kastet(kastet):
+    with open(KASTET_FIL, "w", encoding="utf-8") as fil:
+        json.dump(kastet, fil, ensure_ascii=False, indent=2)
 
 def normalize(text):
     return text.strip().lower()
