@@ -1,7 +1,7 @@
 import streamlit as st
 from utils import hent_varer, lagre_varer, hent_kastet, lagre_kastet, vis_i_dag_stripe
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 vis_i_dag_stripe()
 
@@ -11,8 +11,56 @@ if "spist_feedback" in st.session_state:
     st.success(st.session_state.spist_feedback)
     del st.session_state.spist_feedback
 
+if "lagt_til_pa_nytt_feedback" in st.session_state:
+    st.success(st.session_state.lagt_til_pa_nytt_feedback)
+    del st.session_state.lagt_til_pa_nytt_feedback
+
 # 1. HENT DATA
 varer = hent_varer()
+
+
+@st.dialog("Legge til på nytt?")
+def vis_legg_til_pa_nytt_dialog():
+    vare = st.session_state.get("legg_til_pa_nytt_vare")
+
+    if not vare:
+        return
+
+    st.write(f"Vil du legge til **{vare['navn'].capitalize()}** på nytt?")
+
+    holdbar_til = st.date_input(
+        "Ny holdbarhetsdato",
+        value=date.today() + timedelta(days=7),
+        key=f"legg_til_pa_nytt_holdbar_til_{vare['request_id']}"
+    )
+
+    ja_col, nei_col = st.columns(2)
+
+    with ja_col:
+        if st.button("Ja, legg til", key="bekreft_legg_til_pa_nytt"):
+            nye_varer = hent_varer()
+
+            nye_varer.append({
+                "id": str(uuid.uuid4()),
+                "navn": vare["navn"],
+                "kategori": vare.get("kategori", "ukjent"),
+                "dato_lagt_til": date.today().isoformat(),
+                "holdbar_til": holdbar_til.isoformat()
+            })
+
+            lagre_varer(nye_varer)
+            st.session_state.lagt_til_pa_nytt_feedback = f"La til {vare['navn']} på nytt."
+            del st.session_state.legg_til_pa_nytt_vare
+            st.rerun()
+
+    with nei_col:
+        if st.button("Nei", key="avbryt_legg_til_pa_nytt"):
+            del st.session_state.legg_til_pa_nytt_vare
+            st.rerun()
+
+
+if "legg_til_pa_nytt_vare" in st.session_state:
+    vis_legg_til_pa_nytt_dialog()
 
 # 2. NORMALISER (men IKKE lagre her!)
 normaliserte = []
@@ -103,40 +151,15 @@ else:
         dager = dager_igjen(v)
 
         if dager < 0:
-            tekst = f"• {v['navn'].capitalize()} (utgått!) ⚠️"
+            tekst = f"{v['navn'].capitalize()} (utgått!)"
         elif dager == 0:
-            tekst = f"• {v['navn'].capitalize()} (går ut i dag) 🔥"
+            tekst = f"{v['navn'].capitalize()} (går ut i dag)"
         elif dager == 1:
-            tekst = f"• {v['navn'].capitalize()} (1 dag igjen)"
+            tekst = f"{v['navn'].capitalize()} (1 dag igjen)"
         else:
-            tekst = f"• {v['navn'].capitalize()} ({dager} dager igjen)"
+            tekst = f"{v['navn'].capitalize()} ({dager} dager igjen)"
 
         st.write(tekst)
-
-gamle_varer = [
-    v for v in varer
-    if v.get("holdbar_til") and dager_igjen(v) <= 2
-]
-
-with st.expander("⚠️ Se varer som snart går ut"):
-    if not gamle_varer:
-        st.write("Ingen varer går ut snart 🎉")
-    else:
-        gamle_varer.sort(key=dager_igjen)
-
-        for v in gamle_varer:
-            dager = dager_igjen(v)
-
-            if dager < 0:
-                tekst = f"• {v['navn'].capitalize()} (utgått!) ⚠️"
-            elif dager == 0:
-                tekst = f"• {v['navn'].capitalize()} (går ut i dag)"
-            elif dager == 1:
-                tekst = f"• {v['navn'].capitalize()} (1 dag igjen)"
-            else:
-                tekst = f"• {v['navn'].capitalize()} ({dager} dager igjen)"
-
-            st.write(tekst)
 
 for kategori, items in grupper.items():
     st.subheader(kategori)
@@ -208,6 +231,11 @@ for kategori, items in grupper.items():
                             varer = [item for item in varer if item["id"] != v["id"]]
                             lagre_varer(varer)
                             st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
+                            st.session_state.legg_til_pa_nytt_vare = {
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "request_id": str(uuid.uuid4())
+                            }
                             st.rerun()
 
                     with kastet_col:
@@ -225,6 +253,11 @@ for kategori, items in grupper.items():
 
                             varer = [item for item in varer if item["id"] != v["id"]]
                             lagre_varer(varer)
+                            st.session_state.legg_til_pa_nytt_vare = {
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "request_id": str(uuid.uuid4())
+                            }
 
                             st.rerun()
 

@@ -24,10 +24,14 @@ if "legg_til_info" in st.session_state:
     st.info(st.session_state.legg_til_info)
     del st.session_state.legg_til_info
 
+if "varer_input_nummer" not in st.session_state:
+    st.session_state.varer_input_nummer = 0
+
 navn_tekst = st.text_area(
     "Varer",
     placeholder="egg\nmelk\npaprika",
-    help="Skriv én vare per linje, eller skill med komma."
+    help="Skriv én vare per linje, eller skill med komma.",
+    key=f"varer_input_{st.session_state.varer_input_nummer}"
 )
 
 dato = st.date_input("Når la du den inn?", value=date.today())
@@ -79,6 +83,7 @@ if st.button("Legg til varer"):
     if lagt_til:
         lagre_varer(varer)
         st.session_state.legg_til_feedback = f"La til {len(lagt_til)} varer."
+        st.session_state.varer_input_nummer += 1
 
         if hoppet_over:
             st.session_state.legg_til_info = f"Hoppet over disse fordi de allerede finnes: {', '.join(hoppet_over)}"
