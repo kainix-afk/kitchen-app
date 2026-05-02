@@ -1,6 +1,8 @@
 import streamlit as st
 from collections import Counter
-from utils import hent_kastet
+from utils import hent_kastet, vis_i_dag_stripe
+
+vis_i_dag_stripe()
 
 st.title("📊 Kastet-statistikk")
 

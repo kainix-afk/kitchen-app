@@ -1,9 +1,15 @@
 import streamlit as st
-from utils import hent_varer, lagre_varer, hent_kastet, lagre_kastet
+from utils import hent_varer, lagre_varer, hent_kastet, lagre_kastet, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date
 
+vis_i_dag_stripe()
+
 st.title("🏠 Varer hjemme")
+
+if "spist_feedback" in st.session_state:
+    st.success(st.session_state.spist_feedback)
+    del st.session_state.spist_feedback
 
 # 1. HENT DATA
 varer = hent_varer()
@@ -72,6 +78,20 @@ varer_med_holdbarhet = [
 def dager_igjen(v):
     return (date.fromisoformat(v["holdbar_til"]) - date.today()).days
 
+def grunn_og_urgency(dager):
+    if dager is None:
+        return "Mangler holdbarhetsdato.", "⚪ Ukjent"
+    if dager < 0:
+        return "Denne er over dato og bør vurderes først.", "🔥 Høy"
+    if dager == 0:
+        return "Denne går ut i dag.", "🔥 Høy"
+    if dager == 1:
+        return "Denne har bare 1 dag igjen.", "🟡 Medium"
+    if dager <= 2:
+        return "Denne bør brukes snart.", "🟡 Medium"
+
+    return "Denne holder en stund til.", "🟢 Lav"
+
 varer_med_holdbarhet.sort(key=dager_igjen)
 
 topp = varer_med_holdbarhet[:3]
@@ -122,7 +142,8 @@ for kategori, items in grupper.items():
     st.subheader(kategori)
     
     items.sort(
-        key=lambda v: v.get("dato_lagt_til", "")
+        key=lambda v: v.get("dato_lagt_til", ""),
+        reverse=True
     )
 
     if not items:
@@ -157,7 +178,7 @@ for kategori, items in grupper.items():
                     elif dager_igjen_verdi <= 2:
                         tekst += " 🔥"
 
-                    label = f"• {v['navn'].capitalize()}"
+                label = tekst
 
                 with st.expander(label):
                     if dager_igjen_verdi is None:
@@ -175,26 +196,37 @@ for kategori, items in grupper.items():
                     else:
                         st.write(f"Lagt til: {dato_formatert}")
                         st.write(f"Holdbar til: {holdbar_formatert} ({dager_igjen_verdi} dager igjen)")
-                    if st.button("✅ Spist", key=f"spist_{v['id']}"):
-                        varer = [item for item in varer if item["id"] != v["id"]]
-                        lagre_varer(varer)
-                        st.rerun()
-                    if st.button("❌ Kastet", key=f"kastet_{v['id']}"):
-                        kastet = hent_kastet()
 
-                        kastet.append({
-                            "navn": v["navn"],
-                            "kategori": v.get("kategori", "ukjent"),
-                            "dato_kastet": date.today().isoformat(),
-                            "holdbar_til": v.get("holdbar_til")
-                        })
+                    grunn, urgency = grunn_og_urgency(dager_igjen_verdi)
+                    st.write(f"**Grunn:** {grunn}")
+                    st.write(f"**Urgency:** {urgency}")
 
-                        lagre_kastet(kastet)
+                    spist_col, kastet_col = st.columns(2)
 
-                        varer = [item for item in varer if item["id"] != v["id"]]
-                        lagre_varer(varer)
+                    with spist_col:
+                        if st.button("✅ Spist", key=f"spist_{v['id']}"):
+                            varer = [item for item in varer if item["id"] != v["id"]]
+                            lagre_varer(varer)
+                            st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
+                            st.rerun()
 
-                        st.rerun()
+                    with kastet_col:
+                        if st.button("❌ Kastet", key=f"kastet_{v['id']}"):
+                            kastet = hent_kastet()
+
+                            kastet.append({
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "dato_kastet": date.today().isoformat(),
+                                "holdbar_til": v.get("holdbar_til")
+                            })
+
+                            lagre_kastet(kastet)
+
+                            varer = [item for item in varer if item["id"] != v["id"]]
+                            lagre_varer(varer)
+
+                            st.rerun()
 
             with col2:
                 checked = v["id"] in st.session_state.valgte_varer

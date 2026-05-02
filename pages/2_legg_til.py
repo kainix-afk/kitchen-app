@@ -1,11 +1,34 @@
-)import streamlit as st
+import streamlit as st
+import re
 from datetime import date, timedelta
-from utils import hent_varer, lagre_varer
+from utils import hent_varer, lagre_varer, vis_i_dag_stripe
 import uuid
 
-st.title("➕ Legg til vare")
+def hent_varenavn(tekst):
+    return [
+        navn.strip().lower()
+        for navn in re.split(r"[\n,]+", tekst)
+        if navn.strip()
+    ]
 
-navn = st.text_input("Vare")
+
+vis_i_dag_stripe()
+
+st.title("➕ Legg til varer")
+
+if "legg_til_feedback" in st.session_state:
+    st.success(st.session_state.legg_til_feedback)
+    del st.session_state.legg_til_feedback
+
+if "legg_til_info" in st.session_state:
+    st.info(st.session_state.legg_til_info)
+    del st.session_state.legg_til_info
+
+navn_tekst = st.text_area(
+    "Varer",
+    placeholder="egg\nmelk\npaprika",
+    help="Skriv én vare per linje, eller skill med komma."
+)
 
 dato = st.date_input("Når la du den inn?", value=date.today())
 
@@ -19,32 +42,47 @@ kategori = st.selectbox(
     ["kjøleskap", "fryser", "mat"]
 )
 
-if st.button("Legg til"):
+if st.button("Legg til varer"):
 
-    if not navn.strip():
-        st.warning("Skriv inn en vare først 😄")
+    nye_varenavn = hent_varenavn(navn_tekst)
+
+    if not nye_varenavn:
+        st.warning("Skriv inn minst én vare først 😄")
         st.stop()
 
     varer = hent_varer()
-
-    ny_vare = navn.strip().lower()
-
-    eksisterer = any(
-        v["navn"] == ny_vare if isinstance(v, dict) else v == ny_vare
+    eksisterende_navn = {
+        v["navn"] if isinstance(v, dict) else v
         for v in varer
-    )
+    }
 
-    if eksisterer:
-        st.warning("Du har allerede denne varen 😄")
-    else:
+    lagt_til = []
+    hoppet_over = []
+    sett_i_input = set()
+
+    for ny_vare in nye_varenavn:
+        if ny_vare in eksisterende_navn or ny_vare in sett_i_input:
+            hoppet_over.append(ny_vare)
+            continue
+
+        sett_i_input.add(ny_vare)
+        lagt_til.append(ny_vare)
+
         varer.append({
             "id": str(uuid.uuid4()),
             "navn": ny_vare,
             "kategori": kategori,
-            "dato_lagt_til": date.today().isoformat(),
+            "dato_lagt_til": dato.isoformat(),
             "holdbar_til": holdbar_til.isoformat()
-            })
+        })
 
+    if lagt_til:
         lagre_varer(varer)
-        st.success("Lagt til!")
+        st.session_state.legg_til_feedback = f"La til {len(lagt_til)} varer."
+
+        if hoppet_over:
+            st.session_state.legg_til_info = f"Hoppet over disse fordi de allerede finnes: {', '.join(hoppet_over)}"
+
         st.rerun()
+    else:
+        st.warning("Alle varene finnes allerede 😄")
