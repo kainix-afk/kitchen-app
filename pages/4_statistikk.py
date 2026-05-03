@@ -1,13 +1,22 @@
 import streamlit as st
 from collections import Counter
 from datetime import date, timedelta
-from utils import hent_kastet, vis_i_dag_stripe
+from utils import vis_i_dag_stripe
+from supabase import create_client
+
+url = "https://olzqkoagqplbmrfbhyva.supabase.co"
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
+supabase = create_client(url, key)
 
 vis_i_dag_stripe()
 
 st.title("📊 Kastet-statistikk")
 
-kastet = hent_kastet()
+response = supabase.table("kastet").select("*").execute()
+kastet = response.data
+
+for k in kastet:
+    k["holdbar_til"] = k.get("utløpsdato")
 
 
 def innenfor_periode(vare, dager):

@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import hent_varer, lagre_varer, hent_kastet, lagre_kastet, vis_i_dag_stripe
+from utils import vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
 from supabase import create_client
@@ -37,6 +37,23 @@ def vis_legg_til_pa_nytt_dialog():
         return
 
     st.write(f"Vil du legge til **{vare['navn'].capitalize()}** på nytt?")
+    vis_dato_key = f"vis_legg_til_pa_nytt_dato_{vare['request_id']}"
+
+    if not st.session_state.get(vis_dato_key):
+        ja_col, nei_col = st.columns(2)
+
+        with ja_col:
+            if st.button("Ja", key="vis_dato_legg_til_pa_nytt"):
+                st.session_state[vis_dato_key] = True
+                st.rerun()
+
+        with nei_col:
+            if st.button("Nei", key="avbryt_legg_til_pa_nytt"):
+                del st.session_state.legg_til_pa_nytt_vare
+                st.session_state.pop(vis_dato_key, None)
+                st.rerun()
+
+        return
 
     holdbar_til = st.date_input(
         "Ny holdbarhetsdato",
@@ -44,28 +61,26 @@ def vis_legg_til_pa_nytt_dialog():
         key=f"legg_til_pa_nytt_holdbar_til_{vare['request_id']}"
     )
 
-    ja_col, nei_col = st.columns(2)
+    legg_til_col, avbryt_col = st.columns(2)
 
-    with ja_col:
-        if st.button("Ja, legg til", key="bekreft_legg_til_pa_nytt"):
-            nye_varer = hent_varer()
-
-            nye_varer.append({
-                "id": str(uuid.uuid4()),
+    with legg_til_col:
+        if st.button("Legg til", key="bekreft_legg_til_pa_nytt"):
+            supabase.table("varer").insert({
                 "navn": vare["navn"],
                 "kategori": vare.get("kategori", "ukjent"),
-                "dato_lagt_til": date.today().isoformat(),
-                "holdbar_til": holdbar_til.isoformat()
-            })
+                "utløpsdato": holdbar_til.isoformat(),
+                "status": "aktiv"
+            }).execute()
 
-            lagre_varer(nye_varer)
             st.session_state.lagt_til_pa_nytt_feedback = f"La til {vare['navn']} på nytt."
             del st.session_state.legg_til_pa_nytt_vare
+            st.session_state.pop(vis_dato_key, None)
             st.rerun()
 
-    with nei_col:
-        if st.button("Nei", key="avbryt_legg_til_pa_nytt"):
+    with avbryt_col:
+        if st.button("Avbryt", key="avbryt_dato_legg_til_pa_nytt"):
             del st.session_state.legg_til_pa_nytt_vare
+            st.session_state.pop(vis_dato_key, None)
             st.rerun()
 
 
@@ -251,16 +266,12 @@ for kategori, items in grupper.items():
 
                     with kastet_col:
                         if st.button("❌ Kastet", key=f"kastet_{v['id']}"):
-                            kastet = hent_kastet()
-
-                            kastet.append({
+                            supabase.table("kastet").insert({
                                 "navn": v["navn"],
                                 "kategori": v.get("kategori", "ukjent"),
-                                "dato_kastet": date.today().isoformat(),
-                                "holdbar_til": v.get("holdbar_til")
-                            })
-
-                            lagre_kastet(kastet)
+                                "utløpsdato": v.get("holdbar_til"),
+                                "dato_kastet": date.today().isoformat()
+                            }).execute()
 
                             supabase.table("varer").update({
                                 "status": "kastet"
