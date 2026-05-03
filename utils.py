@@ -1,63 +1,24 @@
-import json
-import os
 from datetime import date
 from html import escape
 import streamlit as st
+from supabase import create_client
 
-FIL = "varer.json"
-KASTET_FIL = "kastet.json"
-
-def hent_kastet():
-    if not os.path.exists(KASTET_FIL):
-        return []
-
-    with open(KASTET_FIL, "r", encoding="utf-8") as fil:
-        return json.load(fil)
-
-def lagre_kastet(kastet):
-    with open(KASTET_FIL, "w", encoding="utf-8") as fil:
-        json.dump(kastet, fil, ensure_ascii=False, indent=2)
+url = "https://olzqkoagqplbmrfbhyva.supabase.co"
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
+supabase = create_client(url, key)
 
 def normalize(text):
     return text.strip().lower()
 
-def last_varer():
-    if os.path.exists(FIL):
-        with open(FIL, "r") as f:
-            return json.load(f)
-    return []
-
-def lagre_varer(varer):
-    st.session_state.varer = varer
-    with open(FIL, "w") as f:
-        json.dump(varer, f)
-
-def hent_varer():
-    if "varer" not in st.session_state:
-        st.session_state.varer = last_varer()
-    return st.session_state.varer
-
 def get_varer_clean():
-    varer = hent_varer()
-
-    import uuid
-
-    clean = []
+    response = supabase.table("varer").select("*").eq("status", "aktiv").execute()
+    varer = response.data
 
     for v in varer:
-        if isinstance(v, str):
-            clean.append({
-                "id": str(uuid.uuid4()),
-                "navn": v,
-                "kategori": "ukjent"
-            })
-        elif "id" not in v:
-            v["id"] = str(uuid.uuid4())
-            clean.append(v)
-        else:
-            clean.append(v)
+        v["holdbar_til"] = v.get("utløpsdato")
+        v["dato_lagt_til"] = v.get("lagt_til")
 
-    return clean   # ❌ IKKE lagre her
+    return varer
 
 def _kort_vareliste(varer, maks_antall=3):
     navn = [
