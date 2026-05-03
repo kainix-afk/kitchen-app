@@ -2,6 +2,11 @@ import streamlit as st
 from utils import hent_varer, lagre_varer, hent_kastet, lagre_kastet, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
+from supabase import create_client
+
+url = "https://olzqkoagqplbmrfbhyva.supabase.co"
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
+supabase = create_client(url, key)
 
 vis_i_dag_stripe()
 
@@ -16,7 +21,12 @@ if "lagt_til_pa_nytt_feedback" in st.session_state:
     del st.session_state.lagt_til_pa_nytt_feedback
 
 # 1. HENT DATA
-varer = hent_varer()
+response = supabase.table("varer").select("*").eq("status", "aktiv").execute()
+varer = response.data
+
+for v in varer:
+    v["holdbar_til"] = v.get("utløpsdato")
+    v["dato_lagt_til"] = v.get("lagt_til")
 
 
 @st.dialog("Legge til på nytt?")
@@ -228,8 +238,9 @@ for kategori, items in grupper.items():
 
                     with spist_col:
                         if st.button("✅ Spist", key=f"spist_{v['id']}"):
-                            varer = [item for item in varer if item["id"] != v["id"]]
-                            lagre_varer(varer)
+                            supabase.table("varer").update({
+                                "status": "spist"
+                            }).eq("id", v["id"]).execute()
                             st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
                             st.session_state.legg_til_pa_nytt_vare = {
                                 "navn": v["navn"],
@@ -251,8 +262,9 @@ for kategori, items in grupper.items():
 
                             lagre_kastet(kastet)
 
-                            varer = [item for item in varer if item["id"] != v["id"]]
-                            lagre_varer(varer)
+                            supabase.table("varer").update({
+                                "status": "kastet"
+                            }).eq("id", v["id"]).execute()
                             st.session_state.legg_til_pa_nytt_vare = {
                                 "navn": v["navn"],
                                 "kategori": v.get("kategori", "ukjent"),
@@ -280,9 +292,10 @@ st.divider()
 
 if st.button("🗑️ Slett valgte"):
 
-    varer = [v for v in varer if v["id"] not in st.session_state.valgte_varer]
-
-    lagre_varer(varer)
+    for vare_id in st.session_state.valgte_varer:
+        supabase.table("varer").update({
+            "status": "slettet"
+        }).eq("id", vare_id).execute()
 
     st.session_state.valgte_varer = set()
 
