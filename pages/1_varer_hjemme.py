@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime, date, timedelta
 from supabase import create_client
 
-url = "https://olzqkoagqplbmrfbhyva.supabase.co"
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
 vis_i_dag_stripe()
@@ -22,6 +22,10 @@ if "spist_feedback" in st.session_state:
 if "lagt_til_pa_nytt_feedback" in st.session_state:
     st.success(st.session_state.lagt_til_pa_nytt_feedback)
     del st.session_state.lagt_til_pa_nytt_feedback
+
+if "dato_endret_feedback" in st.session_state:
+    st.success(st.session_state.dato_endret_feedback)
+    del st.session_state.dato_endret_feedback
 
 # 1. HENT DATA
 response = supabase.table(VARER_TABLE).select("*").eq("status", "aktiv").execute()
@@ -251,6 +255,20 @@ for kategori, items in grupper.items():
                     grunn, urgency = grunn_og_urgency(dager_igjen_verdi)
                     st.write(f"**Grunn:** {grunn}")
                     st.write(f"**Urgency:** {urgency}")
+
+                    ny_holdbar_til = st.date_input(
+                        "Endre holdbarhetsdato",
+                        value=holdbar_obj if raw_holdbar else date.today() + timedelta(days=7),
+                        key=f"endre_holdbar_til_{v['id']}_{raw_holdbar or 'ukjent'}"
+                    )
+
+                    if st.button("Lagre dato", key=f"lagre_dato_{v['id']}"):
+                        supabase.table(VARER_TABLE).update({
+                            "utløpsdato": ny_holdbar_til.isoformat()
+                        }).eq("id", v["id"]).execute()
+
+                        st.session_state.dato_endret_feedback = f"Oppdaterte dato for {v['navn']}."
+                        st.rerun()
 
                     spist_col, kastet_col = st.columns(2)
 

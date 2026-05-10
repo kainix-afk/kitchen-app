@@ -3,8 +3,8 @@ from html import escape
 import streamlit as st
 from supabase import create_client
 
-url = "https://olzqkoagqplbmrfbhyva.supabase.co"
-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
 ENV = st.secrets.get("ENV", "live")
