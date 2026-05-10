@@ -1,7 +1,7 @@
 import streamlit as st
 import re
 from datetime import date, timedelta
-from utils import vis_i_dag_stripe
+from utils import VARER_TABLE, vis_i_dag_stripe
 from supabase import create_client
 
 url = "https://olzqkoagqplbmrfbhyva.supabase.co"
@@ -68,7 +68,7 @@ if st.button("Legg til varer"):
         sett_i_input.add(ny_vare)
         lagt_til.append(ny_vare)
 
-        supabase.table("varer").insert({
+        supabase.table(VARER_TABLE).insert({
             "navn": ny_vare,
             "kategori": kategori,
             "utløpsdato": holdbar_til.isoformat(),

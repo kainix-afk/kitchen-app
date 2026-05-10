@@ -1,7 +1,7 @@
 import streamlit as st
 from collections import Counter
 from datetime import date, timedelta
-from utils import vis_i_dag_stripe
+from utils import KASTET_TABLE, vis_i_dag_stripe
 from supabase import create_client
 
 url = "https://olzqkoagqplbmrfbhyva.supabase.co"
@@ -12,7 +12,7 @@ vis_i_dag_stripe()
 
 st.title("📊 Kastet-statistikk")
 
-response = supabase.table("kastet").select("*").execute()
+response = supabase.table(KASTET_TABLE).select("*").execute()
 kastet = response.data
 
 for k in kastet:

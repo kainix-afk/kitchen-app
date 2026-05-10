@@ -7,11 +7,20 @@ url = "https://olzqkoagqplbmrfbhyva.supabase.co"
 key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9senFrb2FncXBsYm1yZmJoeXZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NjA0ODYsImV4cCI6MjA5MzMzNjQ4Nn0.lTXQq93svaY-hJzl3BT7dXh7gJKPBrxQTsChfx84xSI"
 supabase = create_client(url, key)
 
+ENV = st.secrets.get("ENV", "live")
+
+if ENV == "dev":
+    VARER_TABLE = "varer_dev"
+    KASTET_TABLE = "kastet_dev"
+else:
+    VARER_TABLE = "varer"
+    KASTET_TABLE = "kastet"
+
 def normalize(text):
     return text.strip().lower()
 
 def get_varer_clean():
-    response = supabase.table("varer").select("*").eq("status", "aktiv").execute()
+    response = supabase.table(VARER_TABLE).select("*").eq("status", "aktiv").execute()
     varer = response.data
 
     for v in varer:

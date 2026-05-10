@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import vis_i_dag_stripe
+from utils import ENV, KASTET_TABLE, VARER_TABLE, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
 from supabase import create_client
@@ -12,6 +12,9 @@ vis_i_dag_stripe()
 
 st.title("🏠 Varer hjemme")
 
+if ENV == "dev":
+    st.caption("🛠 Utviklingsmiljø")
+
 if "spist_feedback" in st.session_state:
     st.success(st.session_state.spist_feedback)
     del st.session_state.spist_feedback
@@ -21,7 +24,7 @@ if "lagt_til_pa_nytt_feedback" in st.session_state:
     del st.session_state.lagt_til_pa_nytt_feedback
 
 # 1. HENT DATA
-response = supabase.table("varer").select("*").eq("status", "aktiv").execute()
+response = supabase.table(VARER_TABLE).select("*").eq("status", "aktiv").execute()
 varer = response.data
 
 for v in varer:
@@ -65,7 +68,7 @@ def vis_legg_til_pa_nytt_dialog():
 
     with legg_til_col:
         if st.button("Legg til", key="bekreft_legg_til_pa_nytt"):
-            supabase.table("varer").insert({
+            supabase.table(VARER_TABLE).insert({
                 "navn": vare["navn"],
                 "kategori": vare.get("kategori", "ukjent"),
                 "utløpsdato": holdbar_til.isoformat(),
@@ -253,7 +256,7 @@ for kategori, items in grupper.items():
 
                     with spist_col:
                         if st.button("✅ Spist", key=f"spist_{v['id']}"):
-                            supabase.table("varer").update({
+                            supabase.table(VARER_TABLE).update({
                                 "status": "spist"
                             }).eq("id", v["id"]).execute()
                             st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
@@ -266,14 +269,14 @@ for kategori, items in grupper.items():
 
                     with kastet_col:
                         if st.button("❌ Kastet", key=f"kastet_{v['id']}"):
-                            supabase.table("kastet").insert({
+                            supabase.table(KASTET_TABLE).insert({
                                 "navn": v["navn"],
                                 "kategori": v.get("kategori", "ukjent"),
                                 "utløpsdato": v.get("holdbar_til"),
                                 "dato_kastet": date.today().isoformat()
                             }).execute()
 
-                            supabase.table("varer").update({
+                            supabase.table(VARER_TABLE).update({
                                 "status": "kastet"
                             }).eq("id", v["id"]).execute()
                             st.session_state.legg_til_pa_nytt_vare = {
@@ -304,7 +307,7 @@ st.divider()
 if st.button("🗑️ Slett valgte"):
 
     for vare_id in st.session_state.valgte_varer:
-        supabase.table("varer").update({
+        supabase.table(VARER_TABLE).update({
             "status": "slettet"
         }).eq("id", vare_id).execute()
 
