@@ -1,12 +1,9 @@
 import streamlit as st
 from collections import Counter
 from datetime import date, timedelta
-from utils import KASTET_TABLE, vis_i_dag_stripe
-from supabase import create_client
+from utils import KASTET_TABLE, get_supabase_client, vis_i_dag_stripe
 
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-supabase = create_client(url, key)
+supabase = get_supabase_client()
 
 vis_i_dag_stripe()
 

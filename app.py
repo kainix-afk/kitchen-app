@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import ENV, vis_i_dag_stripe
+from utils import ENV, vis_bruk_dette_forst, vis_i_dag_stripe
 
 
 
@@ -12,6 +12,7 @@ st.title("🍳 Kjøkkenappen")
 if ENV == "dev":
     st.caption("🛠 Utviklingsmiljø")
 
-st.write("Velkommen til kjøkkenassistenten din.")
+vis_bruk_dette_forst(key_prefix="forside")
 
+st.divider()
 st.info("Velg side i menyen til venstre.")
