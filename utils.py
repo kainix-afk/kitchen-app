@@ -3,10 +3,6 @@ from html import escape
 import streamlit as st
 from supabase import create_client
 
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-supabase = create_client(url, key)
-
 ENV = st.secrets.get("ENV", "live")
 
 if ENV == "dev":
@@ -19,7 +15,25 @@ else:
 def normalize(text):
     return text.strip().lower()
 
+@st.cache_resource
+def get_supabase_client():
+    mangler = [
+        navn
+        for navn in ("SUPABASE_URL", "SUPABASE_KEY")
+        if navn not in st.secrets
+    ]
+
+    if mangler:
+        st.error(f"Mangler Streamlit secret: {', '.join(mangler)}")
+        st.stop()
+
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+
+    return create_client(url, key)
+
 def get_varer_clean():
+    supabase = get_supabase_client()
     response = supabase.table(VARER_TABLE).select("*").eq("status", "aktiv").execute()
     varer = response.data
 

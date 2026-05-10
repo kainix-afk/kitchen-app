@@ -1,12 +1,9 @@
 import streamlit as st
-from utils import ENV, KASTET_TABLE, VARER_TABLE, vis_i_dag_stripe
+from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
-from supabase import create_client
 
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-supabase = create_client(url, key)
+supabase = get_supabase_client()
 
 vis_i_dag_stripe()
 

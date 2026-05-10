@@ -1,12 +1,9 @@
 import streamlit as st
 import re
 from datetime import date, timedelta
-from utils import VARER_TABLE, vis_i_dag_stripe
-from supabase import create_client
+from utils import VARER_TABLE, get_supabase_client, vis_i_dag_stripe
 
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-supabase = create_client(url, key)
+supabase = get_supabase_client()
 
 def hent_varenavn(tekst):
     return [
