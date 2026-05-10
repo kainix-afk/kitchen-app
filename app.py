@@ -1,13 +1,11 @@
 import streamlit as st
-from utils import ENV, vis_bruk_dette_forst, vis_i_dag_stripe
+from utils import ENV, vis_bruk_dette_forst
 
 
 
 st.set_page_config(page_title="Kjøkkenappen", page_icon="🍳")
 
-vis_i_dag_stripe()
-
-st.title("🍳 Kjøkkenappen")
+st.title("🏠 Varer hjemme")
 
 if ENV == "dev":
     st.caption("🛠 Utviklingsmiljø")

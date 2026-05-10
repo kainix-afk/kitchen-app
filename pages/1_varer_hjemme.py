@@ -1,11 +1,9 @@
 import streamlit as st
-from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_bruk_dette_forst, vis_i_dag_stripe
+from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_bruk_dette_forst
 import uuid
 from datetime import datetime, date, timedelta
 
 supabase = get_supabase_client()
-
-vis_i_dag_stripe()
 
 st.title("🏠 Varer hjemme")
 
@@ -126,7 +124,7 @@ def toggle_valg(vare_id):
 grupper = {
     "🥶 Kjøleskap": [],
     "🧊 Fryser": [],
-    "🍞 Mat": [],
+    "🥫 Tørrvarer": [],
     "❓ Ukjent": []
 }
 
@@ -138,7 +136,7 @@ for v in varer:
     elif kategori == "fryser":
         key = "🧊 Fryser"
     elif kategori == "mat":
-        key = "🍞 Mat"
+        key = "🥫 Tørrvarer"
     else:
         key = "❓ Ukjent"
 

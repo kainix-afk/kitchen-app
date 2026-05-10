@@ -123,7 +123,7 @@ def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst"):
 
     prioriterte_varer.sort(key=lambda item: item[0])
 
-    st.subheader("🟠 Bruk dette først")
+    st.subheader("🔥 Bruk dette først")
 
     if not prioriterte_varer:
         st.write("Ingen varer som haster akkurat nå.")
