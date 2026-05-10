@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_i_dag_stripe
+from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_bruk_dette_forst, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
 
@@ -145,15 +145,7 @@ for v in varer:
     grupper[key].append(v)
 
 # 5. UI
-st.subheader("🍽️ Spis dette først")
-
-varer_med_holdbarhet = [
-    v for v in varer
-    if v.get("holdbar_til")
-]
-
-def dager_igjen(v):
-    return (date.fromisoformat(v["holdbar_til"]) - date.today()).days
+vis_bruk_dette_forst(varer, key_prefix="varer_hjemme")
 
 def grunn_og_urgency(dager):
     if dager is None:
@@ -168,27 +160,6 @@ def grunn_og_urgency(dager):
         return "Denne bør brukes snart.", "🟡 Medium"
 
     return "Denne holder en stund til.", "🟢 Lav"
-
-varer_med_holdbarhet.sort(key=dager_igjen)
-
-topp = varer_med_holdbarhet[:3]
-
-if not topp:
-    st.write("Ingen varer med holdbarhetsdato ennå")
-else:
-    for v in topp:
-        dager = dager_igjen(v)
-
-        if dager < 0:
-            tekst = f"{v['navn'].capitalize()} (utgått!)"
-        elif dager == 0:
-            tekst = f"{v['navn'].capitalize()} (går ut i dag)"
-        elif dager == 1:
-            tekst = f"{v['navn'].capitalize()} (1 dag igjen)"
-        else:
-            tekst = f"{v['navn'].capitalize()} ({dager} dager igjen)"
-
-        st.write(tekst)
 
 for kategori, items in grupper.items():
     st.subheader(kategori)
