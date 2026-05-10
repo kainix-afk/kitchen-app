@@ -144,7 +144,7 @@ def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst"):
         with st.expander(label, expanded=True):
             st.write(f"Holdbar til: {holdbar_til.strftime('%d.%m.%Y')}")
 
-            brukt_col, kastet_col, dato_col = st.columns([1, 1, 2])
+            brukt_col, kastet_col, dato_col = st.columns([1, 1, 1])
 
             with brukt_col:
                 if st.button("✅ Brukt", key=f"{key_prefix}_brukt_{vare_id}"):
@@ -155,14 +155,15 @@ def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst"):
                     _registrer_kastet(supabase, vare)
 
             with dato_col:
-                ny_dato = st.date_input(
-                    "Ny dato",
-                    value=holdbar_til,
-                    key=f"{key_prefix}_ny_dato_{vare_id}_{raw_holdbar}"
-                )
+                with st.popover("📅 Endre dato"):
+                    ny_dato = st.date_input(
+                        "Ny dato",
+                        value=holdbar_til,
+                        key=f"{key_prefix}_ny_dato_{vare_id}_{raw_holdbar}"
+                    )
 
-                if st.button("📅 Endre dato", key=f"{key_prefix}_endre_dato_{vare_id}"):
-                    _lagre_holdbarhetsdato(supabase, vare, ny_dato)
+                    if st.button("Lagre dato", key=f"{key_prefix}_endre_dato_{vare_id}"):
+                        _lagre_holdbarhetsdato(supabase, vare, ny_dato)
 
 def vis_i_dag_stripe():
     varer = get_varer_clean()
