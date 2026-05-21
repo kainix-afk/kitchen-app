@@ -1,7 +1,7 @@
 import streamlit as st
 import re
 from datetime import date, timedelta
-from utils import VARER_TABLE, get_supabase_client, vis_i_dag_stripe
+from utils import VARER_TABLE, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
@@ -55,6 +55,19 @@ def legg_til_hurtigvare(varenavn, input_key):
 def sett_holdbarhetsdato(dager, input_key):
     valgt_dato = st.session_state.get(input_key, date.today())
     st.session_state[input_key] = valgt_dato + timedelta(days=dager)
+
+
+def vare_finnes_hjemme(varenavn):
+    response = (
+        supabase.table(VARER_TABLE)
+        .select("id")
+        .eq("status", "aktiv")
+        .ilike("navn", varenavn.strip())
+        .limit(1)
+        .execute()
+    )
+
+    return bool(response.data)
 
 
 vis_i_dag_stripe()
@@ -166,16 +179,29 @@ if st.button("Legg til varer"):
         st.warning("Skriv inn minst én vare først 😄")
         st.stop()
 
+    varer_hjemme = {
+        normalize(vare["navn"])
+        for vare in get_varer_clean()
+        if vare.get("navn")
+    }
     lagt_til = []
-    hoppet_over = []
+    hoppet_over_input = []
+    hoppet_over_hjemme = []
     sett_i_input = set()
 
     for ny_vare in nye_varenavn:
-        if ny_vare in sett_i_input:
-            hoppet_over.append(ny_vare)
+        normalisert_vare = normalize(ny_vare)
+
+        if normalisert_vare in sett_i_input:
+            hoppet_over_input.append(ny_vare)
             continue
 
-        sett_i_input.add(ny_vare)
+        sett_i_input.add(normalisert_vare)
+
+        if normalisert_vare in varer_hjemme or vare_finnes_hjemme(ny_vare):
+            hoppet_over_hjemme.append(ny_vare)
+            continue
+
         lagt_til.append(ny_vare)
 
         supabase.table(VARER_TABLE).insert({
@@ -184,15 +210,30 @@ if st.button("Legg til varer"):
             "utløpsdato": holdbar_til.isoformat(),
             "status": "aktiv"
         }).execute()
+        varer_hjemme.add(normalisert_vare)
+
+    info_meldinger = []
+
+    if hoppet_over_input:
+        info_meldinger.append(
+            f"Hoppet over duplikater i input: {', '.join(hoppet_over_input)}"
+        )
+
+    if hoppet_over_hjemme:
+        info_meldinger.append(
+            f"Finnes allerede hjemme: {', '.join(hoppet_over_hjemme)}"
+        )
 
     if lagt_til:
         st.session_state.legg_til_feedback = f"La til {len(lagt_til)} varer."
         st.session_state.sist_valgt_kategori = kategori
         st.session_state.varer_input_nummer += 1
 
-        if hoppet_over:
-            st.session_state.legg_til_info = f"Hoppet over duplikater i input: {', '.join(hoppet_over)}"
+        if info_meldinger:
+            st.session_state.legg_til_info = " | ".join(info_meldinger)
 
         st.rerun()
+    elif info_meldinger:
+        st.info("Ingen nye varer ble lagt til. " + " | ".join(info_meldinger))
     else:
         st.warning("Ingen varer ble lagt til 😄")

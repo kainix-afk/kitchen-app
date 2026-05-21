@@ -69,6 +69,19 @@ def rydd_legg_til_pa_nytt_state(request_id):
         st.session_state.pop(f"legg_til_pa_nytt_holdbar_til_{request_id}", None)
 
 
+def vare_finnes_hjemme(varenavn):
+    response = (
+        supabase.table(VARER_TABLE)
+        .select("id")
+        .eq("status", "aktiv")
+        .ilike("navn", varenavn.strip())
+        .limit(1)
+        .execute()
+    )
+
+    return bool(response.data)
+
+
 def angre_siste_handling():
     handling = st.session_state.get("angre_handling")
 
@@ -89,9 +102,7 @@ def angre_siste_handling():
     if st.session_state.get("inline_slettet_vare", {}).get("id") == handling["vare_id"]:
         del st.session_state.inline_slettet_vare
 
-    if handling["handling"] == "slettet":
-        st.session_state.angre_feedback = f"Angret sletting av {handling['navn']}."
-    else:
+    if handling["handling"] != "slettet":
         st.session_state.angre_feedback = f"Angret {handling['handling']} for {handling['navn']}."
 
     del st.session_state.angre_handling
@@ -178,14 +189,17 @@ def vis_legg_til_pa_nytt_dialog():
 
     with legg_til_col:
         if st.button("Legg til", key="bekreft_legg_til_pa_nytt"):
-            supabase.table(VARER_TABLE).insert({
-                "navn": vare["navn"],
-                "kategori": vare.get("kategori", "ukjent"),
-                "utløpsdato": holdbar_til.isoformat(),
-                "status": "aktiv"
-            }).execute()
+            if vare_finnes_hjemme(vare["navn"]):
+                st.session_state.lagt_til_pa_nytt_feedback = f"{vare['navn'].capitalize()} finnes allerede hjemme."
+            else:
+                supabase.table(VARER_TABLE).insert({
+                    "navn": vare["navn"],
+                    "kategori": vare.get("kategori", "ukjent"),
+                    "utløpsdato": holdbar_til.isoformat(),
+                    "status": "aktiv"
+                }).execute()
 
-            st.session_state.lagt_til_pa_nytt_feedback = f"La til {vare['navn']} på nytt."
+                st.session_state.lagt_til_pa_nytt_feedback = f"La til {vare['navn']} på nytt."
 
             if st.session_state.get("angre_handling", {}).get("request_id") == vare["request_id"]:
                 del st.session_state.angre_handling
