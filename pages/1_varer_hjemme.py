@@ -1,10 +1,35 @@
 import streamlit as st
-from utils import ENV, KASTET_TABLE, VARER_TABLE, format_mengde, get_supabase_client, insert_vare, vis_bruk_dette_forst, vis_i_dag_stripe
+import utils
+from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_bruk_dette_forst, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
 from html import escape
 
 supabase = get_supabase_client()
+
+def _format_mengde_fallback(vare):
+    mengde = vare.get("mengde")
+    enhet = (vare.get("enhet") or "").strip()
+
+    if mengde in (None, ""):
+        return ""
+
+    try:
+        if float(mengde) == 0:
+            return ""
+        mengde_tekst = f"{float(mengde):g}"
+    except (TypeError, ValueError):
+        mengde_tekst = str(mengde).strip()
+
+    return f"{mengde_tekst} {enhet}".strip()
+
+
+def _insert_vare_fallback(supabase_client, vare):
+    return supabase_client.table(VARER_TABLE).insert(vare).execute(), False
+
+
+format_mengde = getattr(utils, "format_mengde", _format_mengde_fallback)
+insert_vare = getattr(utils, "insert_vare", _insert_vare_fallback)
 
 vis_i_dag_stripe()
 

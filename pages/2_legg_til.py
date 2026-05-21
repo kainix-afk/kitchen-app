@@ -2,9 +2,15 @@ import streamlit as st
 import re
 from datetime import date, timedelta
 import utils
-from utils import VARER_TABLE, get_supabase_client, get_varer_clean, insert_vare, normalize, vis_i_dag_stripe
+from utils import VARER_TABLE, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
 
 supabase = get_supabase_client()
+
+def _insert_vare_fallback(supabase_client, vare):
+    return supabase_client.table(VARER_TABLE).insert(vare).execute(), False
+
+
+insert_vare = getattr(utils, "insert_vare", _insert_vare_fallback)
 
 getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
 
