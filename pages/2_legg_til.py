@@ -2,9 +2,15 @@ import streamlit as st
 import re
 from datetime import date, timedelta
 import utils
-from utils import VARER_TABLE, get_supabase_client, get_varer_clean, insert_vare, normalize, vis_i_dag_stripe
+from utils import VARER_TABLE, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
 
 supabase = get_supabase_client()
+
+def _insert_vare_fallback(supabase_client, vare):
+    return supabase_client.table(VARER_TABLE).insert(vare).execute(), False
+
+
+insert_vare = getattr(utils, "insert_vare", _insert_vare_fallback)
 
 getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
 
@@ -42,18 +48,19 @@ KATEGORIER = ["kjøleskap", "fryser", "mat"]
 ENHETER = ["", "stk", "pakke", "poser", "g", "kg", "dl", "l"]
 
 
-def legg_til_hurtigvare(varenavn, input_key):
-    eksisterende_varer = hent_varenavn(st.session_state.get(input_key, ""))
+def legg_til_i_liste(tekst, ny_vare):
+    linjer = [
+        linje.strip().lower()
+        for linje in tekst.splitlines()
+        if linje.strip()
+    ]
 
-    if varenavn in eksisterende_varer:
-        st.session_state[input_key] = "\n".join(
-            vare for vare in eksisterende_varer
-            if vare != varenavn
-        )
-        return
+    if ny_vare in linjer:
+        linjer = [linje for linje in linjer if linje != ny_vare]
+    else:
+        linjer.append(ny_vare)
 
-    tekst = st.session_state.get(input_key, "").strip()
-    st.session_state[input_key] = f"{tekst}\n{varenavn}" if tekst else varenavn
+    return "\n".join(linjer)
 
 
 def sett_holdbarhetsdato(dager, input_key):
@@ -112,14 +119,14 @@ if "legg_til_info" in st.session_state:
     st.info(st.session_state.legg_til_info)
     del st.session_state.legg_til_info
 
-if "varer_input_nummer" not in st.session_state:
-    st.session_state.varer_input_nummer = 0
-
 if "sist_valgt_kategori" not in st.session_state:
     st.session_state.sist_valgt_kategori = "kjøleskap"
 
-varer_input_key = f"varer_input_{st.session_state.varer_input_nummer}"
+varer_input_key = "varer_input"
 holdbar_til_key = "holdbar_til_valg"
+
+if st.session_state.pop("tøm_varer_input", False):
+    st.session_state[varer_input_key] = ""
 
 if varer_input_key not in st.session_state:
     st.session_state[varer_input_key] = ""
@@ -129,6 +136,7 @@ if holdbar_til_key not in st.session_state:
 
 if "kategori_valg" not in st.session_state:
     st.session_state.kategori_valg = st.session_state.sist_valgt_kategori
+
 
 st.subheader("Hurtigvalg")
 
@@ -140,14 +148,18 @@ for index, (ikon, varenavn) in enumerate(HURTIGVARER):
     label = f"✓ {ikon} {varenavn.capitalize()}" if valgt else f"{ikon} {varenavn.capitalize()}"
 
     with hurtig_cols[index % len(hurtig_cols)]:
-        st.button(
+        if st.button(
             label,
-            key=f"hurtigvare_{varenavn}",
-            on_click=legg_til_hurtigvare,
-            args=(varenavn, varer_input_key),
+            key=f"quick_{varenavn}",
             type="primary" if valgt else "secondary",
             use_container_width=True,
-        )
+        ):
+            st.session_state[varer_input_key] = legg_til_i_liste(
+                st.session_state.get(varer_input_key, ""),
+                varenavn,
+            )
+            st.rerun()
+
 
 navn_tekst = st.text_area(
     "Varer",
@@ -261,7 +273,7 @@ if st.button("Legg til varer"):
     if lagt_til:
         st.session_state.legg_til_feedback = f"La til {len(lagt_til)} varer."
         st.session_state.sist_valgt_kategori = kategori
-        st.session_state.varer_input_nummer += 1
+        st.session_state.tøm_varer_input = True
 
         if info_meldinger:
             st.session_state.legg_til_info = " | ".join(info_meldinger)
