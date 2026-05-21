@@ -1,11 +1,12 @@
 import streamlit as st
 from datetime import date
-from utils import ENV, get_varer_clean, rydd_varer_hjemme_angre_state, vis_bruk_dette_forst, vis_i_dag_stripe
+import utils
+from utils import ENV, get_varer_clean, vis_bruk_dette_forst, vis_i_dag_stripe
 
 
 st.set_page_config(page_title="Kjøkkenappen", page_icon="🍳")
 
-rydd_varer_hjemme_angre_state()
+getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
 vis_i_dag_stripe()
 
 st.title("🍳 Kjøkkenappen")

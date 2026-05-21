@@ -1,11 +1,12 @@
 import streamlit as st
 import re
 from datetime import date, timedelta
-from utils import VARER_TABLE, get_supabase_client, get_varer_clean, insert_vare, normalize, rydd_varer_hjemme_angre_state, vis_i_dag_stripe
+import utils
+from utils import VARER_TABLE, get_supabase_client, get_varer_clean, insert_vare, normalize, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
-rydd_varer_hjemme_angre_state()
+getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
 
 
 def hent_varenavn(tekst):
