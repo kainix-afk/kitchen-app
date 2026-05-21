@@ -85,7 +85,15 @@ def angre_siste_handling():
         supabase.table(KASTET_TABLE).delete().eq("id", kastet_id).execute()
 
     rydd_legg_til_pa_nytt_state(handling.get("request_id"))
-    st.session_state.angre_feedback = f"Angret {handling['handling']} for {handling['navn']}."
+
+    if st.session_state.get("inline_slettet_vare", {}).get("id") == handling["vare_id"]:
+        del st.session_state.inline_slettet_vare
+
+    if handling["handling"] == "slettet":
+        st.session_state.angre_feedback = f"Angret sletting av {handling['navn']}."
+    else:
+        st.session_state.angre_feedback = f"Angret {handling['handling']} for {handling['navn']}."
+
     del st.session_state.angre_handling
     st.rerun()
 
@@ -96,14 +104,16 @@ if "angre_feedback" in st.session_state:
 
 if "angre_handling" in st.session_state:
     handling = st.session_state.angre_handling
-    angre_col, tom_col = st.columns([1, 3])
 
-    with angre_col:
-        if st.button("Angre", key="angre_siste_handling", use_container_width=True):
-            angre_siste_handling()
+    if handling["handling"] != "slettet":
+        angre_col, tom_col = st.columns([1, 3])
 
-    with tom_col:
-        st.caption(f"Sist handling: {handling['handling']} - {handling['navn'].capitalize()}")
+        with angre_col:
+            if st.button("Angre", key="angre_siste_handling", use_container_width=True):
+                angre_siste_handling()
+
+        with tom_col:
+            st.caption(f"Sist handling: {handling['handling']} - {handling['navn'].capitalize()}")
 
 
 if "spist_feedback" in st.session_state:
@@ -237,6 +247,22 @@ for v in varer:
 
     grupper[key].append(v)
 
+inline_slettet_vare = st.session_state.get("inline_slettet_vare")
+
+if inline_slettet_vare and st.session_state.get("angre_handling", {}).get("handling") == "slettet":
+    kategori = inline_slettet_vare.get("kategori", "ukjent")
+
+    if kategori == "kjøleskap":
+        key = "🥶 Kjøleskap"
+    elif kategori == "fryser":
+        key = "🧊 Fryser"
+    elif kategori == "mat":
+        key = "🍞 Mat"
+    else:
+        key = "❓ Ukjent"
+
+    grupper[key].append(inline_slettet_vare)
+
 # 4. UI
 vis_bruk_dette_forst(varer, key_prefix="varer_hjemme")
 
@@ -333,6 +359,20 @@ for kategori, items in grupper.items():
         st.write("Tomt")
     else:
         for v in items:
+            if v.get("__slettet_placeholder"):
+                with st.container(border=True):
+                    angre_col, tekst_col = st.columns([1, 3])
+
+                    with angre_col:
+                        if st.button("Angre", key=f"angre_slett_{v['id']}", use_container_width=True):
+                            angre_siste_handling()
+
+                    with tekst_col:
+                        st.write(f"{v['navn'].capitalize()} ble slettet.")
+
+                st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
+                continue
+
             raw_dato = v.get("dato_lagt_til")
             raw_holdbar = v.get("holdbar_til")
 
@@ -394,7 +434,7 @@ for kategori, items in grupper.items():
                     unsafe_allow_html=True,
                 )
 
-                brukt_col, kastet_col = st.columns(2)
+                brukt_col, kastet_col, slett_col = st.columns(3)
 
                 with brukt_col:
                     if st.button("✓ Brukt", key=f"spist_{v['id']}", type="primary", use_container_width=True):
@@ -404,6 +444,7 @@ for kategori, items in grupper.items():
                             "status": "spist"
                         }).eq("id", v["id"]).execute()
                         st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
+                        st.session_state.pop("inline_slettet_vare", None)
                         st.session_state.angre_handling = {
                             "handling": "spist",
                             "vare_id": v["id"],
@@ -433,6 +474,7 @@ for kategori, items in grupper.items():
                             "status": "kastet"
                         }).eq("id", v["id"]).execute()
                         st.session_state.spist_feedback = f"Markerte {v['navn']} som kastet."
+                        st.session_state.pop("inline_slettet_vare", None)
                         st.session_state.angre_handling = {
                             "handling": "kastet",
                             "vare_id": v["id"],
@@ -446,6 +488,23 @@ for kategori, items in grupper.items():
                             "request_id": request_id
                         }
 
+                        st.rerun()
+
+                with slett_col:
+                    if st.button("🗑️ Slett", key=f"slett_{v['id']}", use_container_width=True):
+                        supabase.table(VARER_TABLE).update({
+                            "status": "slettet"
+                        }).eq("id", v["id"]).execute()
+                        st.session_state.pop("spist_feedback", None)
+                        st.session_state.inline_slettet_vare = {
+                            **v,
+                            "__slettet_placeholder": True,
+                        }
+                        st.session_state.angre_handling = {
+                            "handling": "slettet",
+                            "vare_id": v["id"],
+                            "navn": v["navn"],
+                        }
                         st.rerun()
 
                 with st.expander("Detaljer", expanded=False):

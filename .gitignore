@@ -4,3 +4,4 @@ __pycache__/
 varer.json
 kastet.json
 .streamlit/secrets.toml
+.vscode/

@@ -53,7 +53,8 @@ def legg_til_hurtigvare(varenavn, input_key):
 
 
 def sett_holdbarhetsdato(dager, input_key):
-    st.session_state[input_key] = date.today() + timedelta(days=dager)
+    valgt_dato = st.session_state.get(input_key, date.today())
+    st.session_state[input_key] = valgt_dato + timedelta(days=dager)
 
 
 vis_i_dag_stripe()
