@@ -15,6 +15,71 @@ else:
 def normalize(text):
     return text.strip().lower()
 
+def format_mengde(vare):
+    mengde = vare.get("mengde")
+    enhet = (vare.get("enhet") or "").strip()
+
+    if mengde in (None, ""):
+        return ""
+
+    try:
+        if float(mengde) == 0:
+            return ""
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        mengde_tekst = f"{float(mengde):g}"
+    except (TypeError, ValueError):
+        mengde_tekst = str(mengde).strip()
+
+    return f"{mengde_tekst} {enhet}".strip()
+
+
+def insert_vare(supabase, vare):
+    try:
+        return supabase.table(VARER_TABLE).insert(vare).execute(), False
+    except Exception as error:
+        feiltekst = str(error).lower()
+        har_mengdefelt = "mengde" in vare or "enhet" in vare
+        mangler_mengdefelt = any(
+            tekst in feiltekst
+            for tekst in ("mengde", "enhet", "column", "schema cache")
+        )
+
+        if har_mengdefelt and mangler_mengdefelt:
+            vare_uten_mengde = {
+                key: value
+                for key, value in vare.items()
+                if key not in ("mengde", "enhet")
+            }
+            return supabase.table(VARER_TABLE).insert(vare_uten_mengde).execute(), True
+
+        raise
+
+def rydd_varer_hjemme_angre_state():
+    request_id = None
+    angre_handling = st.session_state.get("angre_handling")
+    legg_til_pa_nytt_vare = st.session_state.get("legg_til_pa_nytt_vare")
+
+    if angre_handling:
+        request_id = angre_handling.get("request_id")
+
+    if not request_id and legg_til_pa_nytt_vare:
+        request_id = legg_til_pa_nytt_vare.get("request_id")
+
+    for key in (
+        "angre_handling",
+        "angre_feedback",
+        "inline_slettet_vare",
+        "legg_til_pa_nytt_vare",
+    ):
+        st.session_state.pop(key, None)
+
+    if request_id:
+        st.session_state.pop(f"vis_legg_til_pa_nytt_dato_{request_id}", None)
+        st.session_state.pop(f"legg_til_pa_nytt_holdbar_til_{request_id}", None)
+
 @st.cache_resource
 def get_supabase_client():
     mangler = [
@@ -64,15 +129,15 @@ def _dager_igjen(vare):
 
 def _holdbar_tekst(dager):
     if dager is None:
-        return "mangler dato"
+        return "Mangler dato"
     if dager < 0:
-        return f"utløpt for {abs(dager)} dager siden"
+        return "Utløpt"
     if dager == 0:
-        return "går ut i dag"
+        return "I dag"
     if dager == 1:
-        return "går ut i morgen"
+        return "I morgen"
 
-    return f"{dager} dager igjen"
+    return f"Om {dager} dager"
 
 def _registrer_brukt(supabase, vare):
     supabase.table(VARER_TABLE).update({
@@ -87,7 +152,9 @@ def _registrer_kastet(supabase, vare):
         "navn": vare["navn"],
         "kategori": vare.get("kategori", "ukjent"),
         "utløpsdato": vare.get("holdbar_til") or vare.get("utløpsdato"),
-        "dato_kastet": date.today().isoformat()
+        "dato_kastet": date.today().isoformat(),
+        "mengde": vare.get("mengde"),
+        "enhet": vare.get("enhet", "")
     }).execute()
 
     supabase.table(VARER_TABLE).update({
@@ -105,7 +172,7 @@ def _lagre_holdbarhetsdato(supabase, vare, ny_dato):
     st.session_state.bruk_forst_feedback = f"Oppdaterte dato for {vare['navn']}."
     st.rerun()
 
-def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst"):
+def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst", maks_antall=5):
     if "bruk_forst_feedback" in st.session_state:
         st.success(st.session_state.bruk_forst_feedback)
         del st.session_state.bruk_forst_feedback
@@ -116,54 +183,48 @@ def vis_bruk_dette_forst(varer=None, key_prefix="bruk_forst"):
     prioriterte_varer = []
 
     for vare in varer:
+        if vare.get("status") and vare.get("status") != "aktiv":
+            continue
+
         dager = _dager_igjen(vare)
 
         if dager is not None and dager <= 3:
             prioriterte_varer.append((dager, vare))
 
     prioriterte_varer.sort(key=lambda item: item[0])
+    prioriterte_varer = prioriterte_varer[:maks_antall]
 
     st.subheader("🔥 Bruk dette først")
 
     if not prioriterte_varer:
-        st.write("Ingen varer som haster akkurat nå.")
+        st.info("Ingen varer som haster akkurat nå. Alt ser rolig ut ✅")
         return
 
-    supabase = get_supabase_client()
-
     for dager, vare in prioriterte_varer:
-        vare_id = vare.get("id")
+        navn = escape(vare["navn"].capitalize())
+        tekst = escape(_holdbar_tekst(dager))
 
-        if not vare_id:
-            continue
-
-        raw_holdbar = vare.get("holdbar_til") or vare.get("utløpsdato")
-        holdbar_til = date.fromisoformat(raw_holdbar)
-        label = f"{vare['navn'].capitalize()} - {_holdbar_tekst(dager)}"
-
-        with st.expander(label, expanded=True):
-            st.write(f"Holdbar til: {holdbar_til.strftime('%d.%m.%Y')}")
-
-            brukt_col, kastet_col, dato_col = st.columns([1, 1, 1])
-
-            with brukt_col:
-                if st.button("✅ Brukt", key=f"{key_prefix}_brukt_{vare_id}"):
-                    _registrer_brukt(supabase, vare)
-
-            with kastet_col:
-                if st.button("🗑 Kastet", key=f"{key_prefix}_kastet_{vare_id}"):
-                    _registrer_kastet(supabase, vare)
-
-            with dato_col:
-                with st.popover("📅 Endre dato"):
-                    ny_dato = st.date_input(
-                        "Ny dato",
-                        value=holdbar_til,
-                        key=f"{key_prefix}_ny_dato_{vare_id}_{raw_holdbar}"
-                    )
-
-                    if st.button("Lagre dato", key=f"{key_prefix}_endre_dato_{vare_id}"):
-                        _lagre_holdbarhetsdato(supabase, vare, ny_dato)
+        st.markdown(
+            f"""
+            <div style="
+                align-items: center;
+                border-bottom: 1px solid #edf0f2;
+                display: flex;
+                gap: 12px;
+                justify-content: space-between;
+                padding: 7px 0;
+            ">
+                <div style="font-weight: 750; line-height: 1.25;">{navn}</div>
+                <div style="
+                    color: #5f4a2a;
+                    font-size: 0.9rem;
+                    font-weight: 750;
+                    white-space: nowrap;
+                ">{tekst}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 def vis_i_dag_stripe():
     varer = get_varer_clean()

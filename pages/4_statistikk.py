@@ -1,10 +1,12 @@
 import streamlit as st
 from collections import Counter
 from datetime import date, timedelta
+import utils
 from utils import KASTET_TABLE, get_supabase_client, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
+getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
 vis_i_dag_stripe()
 
 st.title("📊 Kastet-statistikk")
