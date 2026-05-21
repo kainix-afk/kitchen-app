@@ -48,19 +48,42 @@ KATEGORIER = ["kjøleskap", "fryser", "mat"]
 ENHETER = ["", "stk", "pakke", "poser", "g", "kg", "dl", "l"]
 
 
-def legg_til_i_liste(tekst, ny_vare):
-    linjer = [
-        linje.strip().lower()
-        for linje in tekst.splitlines()
-        if linje.strip()
+def hurtigvare_navn():
+    return [varenavn for _, varenavn in HURTIGVARER]
+
+
+def hurtigvare_labels():
+    return {
+        varenavn: f"{ikon} {varenavn.capitalize()}"
+        for ikon, varenavn in HURTIGVARER
+    }
+
+
+def synk_hurtigvalg_med_tekst(hurtigvalg_key, input_key):
+    valgte = st.session_state.get(hurtigvalg_key, []) or []
+    hurtigvarer = set(hurtigvare_navn())
+    linjer = hent_varenavn(st.session_state.get(input_key, ""))
+
+    oppdaterte_linjer = [
+        linje
+        for linje in linjer
+        if linje not in hurtigvarer or linje in valgte
     ]
 
-    if ny_vare in linjer:
-        linjer = [linje for linje in linjer if linje != ny_vare]
-    else:
-        linjer.append(ny_vare)
+    for varenavn in valgte:
+        if varenavn not in oppdaterte_linjer:
+            oppdaterte_linjer.append(varenavn)
 
-    return "\n".join(linjer)
+    st.session_state[input_key] = "\n".join(oppdaterte_linjer)
+
+
+def synk_tekst_med_hurtigvalg(input_key, hurtigvalg_key):
+    linjer = set(hent_varenavn(st.session_state.get(input_key, "")))
+    st.session_state[hurtigvalg_key] = [
+        varenavn
+        for varenavn in hurtigvare_navn()
+        if varenavn in linjer
+    ]
 
 
 def sett_holdbarhetsdato(dager, input_key):
@@ -123,13 +146,18 @@ if "sist_valgt_kategori" not in st.session_state:
     st.session_state.sist_valgt_kategori = "kjøleskap"
 
 varer_input_key = "varer_input"
+hurtigvalg_key = "hurtigvalg_varer"
 holdbar_til_key = "holdbar_til_valg"
 
 if st.session_state.pop("tøm_varer_input", False):
     st.session_state[varer_input_key] = ""
+    st.session_state[hurtigvalg_key] = []
 
 if varer_input_key not in st.session_state:
     st.session_state[varer_input_key] = ""
+
+if hurtigvalg_key not in st.session_state:
+    synk_tekst_med_hurtigvalg(varer_input_key, hurtigvalg_key)
 
 if holdbar_til_key not in st.session_state:
     st.session_state[holdbar_til_key] = date.today() + timedelta(days=7)
@@ -140,32 +168,25 @@ if "kategori_valg" not in st.session_state:
 
 st.subheader("Hurtigvalg")
 
-valgte_hurtigvarer = set(hent_varenavn(st.session_state.get(varer_input_key, "")))
-hurtig_cols = st.columns(3)
-
-for index, (ikon, varenavn) in enumerate(HURTIGVARER):
-    valgt = varenavn in valgte_hurtigvarer
-    label = f"✓ {ikon} {varenavn.capitalize()}" if valgt else f"{ikon} {varenavn.capitalize()}"
-
-    with hurtig_cols[index % len(hurtig_cols)]:
-        if st.button(
-            label,
-            key=f"quick_{varenavn}",
-            type="primary" if valgt else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state[varer_input_key] = legg_til_i_liste(
-                st.session_state.get(varer_input_key, ""),
-                varenavn,
-            )
-            st.rerun()
-
+labels = hurtigvare_labels()
+st.pills(
+    "Velg raske varer",
+    options=hurtigvare_navn(),
+    selection_mode="multi",
+    format_func=lambda varenavn: labels[varenavn],
+    key=hurtigvalg_key,
+    on_change=synk_hurtigvalg_med_tekst,
+    args=(hurtigvalg_key, varer_input_key),
+    label_visibility="collapsed",
+)
 
 navn_tekst = st.text_area(
     "Varer",
     placeholder="egg\nmelk\npaprika",
     help="Skriv én vare per linje, eller skill med komma.",
-    key=varer_input_key
+    key=varer_input_key,
+    on_change=synk_tekst_med_hurtigvalg,
+    args=(varer_input_key, hurtigvalg_key),
 )
 
 st.subheader("Holdbarhet")
