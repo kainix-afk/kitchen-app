@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import ENV, KASTET_TABLE, VARER_TABLE, get_supabase_client, vis_bruk_dette_forst, vis_i_dag_stripe
+from utils import ENV, KASTET_TABLE, VARER_TABLE, format_mengde, get_supabase_client, insert_vare, vis_bruk_dette_forst, vis_i_dag_stripe
 import uuid
 from datetime import datetime, date, timedelta
 from html import escape
@@ -192,12 +192,14 @@ def vis_legg_til_pa_nytt_dialog():
             if vare_finnes_hjemme(vare["navn"]):
                 st.session_state.lagt_til_pa_nytt_feedback = f"{vare['navn'].capitalize()} finnes allerede hjemme."
             else:
-                supabase.table(VARER_TABLE).insert({
+                insert_vare(supabase, {
                     "navn": vare["navn"],
                     "kategori": vare.get("kategori", "ukjent"),
                     "utløpsdato": holdbar_til.isoformat(),
-                    "status": "aktiv"
-                }).execute()
+                    "status": "aktiv",
+                    "mengde": vare.get("mengde"),
+                    "enhet": vare.get("enhet", ""),
+                })
 
                 st.session_state.lagt_til_pa_nytt_feedback = f"La til {vare['navn']} på nytt."
 
@@ -364,13 +366,42 @@ def vare_sortering(vare):
     return (prioritet["rank"], dager, vare.get("dato_lagt_til", ""))
 
 
+def kategori_telling(items):
+    synlige_varer = [
+        vare for vare in items
+        if not vare.get("__slettet_placeholder")
+    ]
+    brukes_snart = 0
+
+    for vare in synlige_varer:
+        raw_holdbar = vare.get("holdbar_til")
+
+        if not raw_holdbar:
+            continue
+
+        dager = (date.fromisoformat(raw_holdbar) - date.today()).days
+
+        if dager <= 3:
+            brukes_snart += 1
+
+    return len(synlige_varer), brukes_snart
+
+
 for kategori, items in grupper.items():
-    st.subheader(kategori)
+    antall_varer, brukes_snart = kategori_telling(items)
+    st.subheader(f"{kategori}: {antall_varer} varer")
+    st.caption(f"Brukes snart: {brukes_snart}")
 
     items.sort(key=vare_sortering)
 
     if not items:
-        st.write("Tomt")
+        tomtekster = {
+            "🥶 Kjøleskap": "Ingen varer i kjøleskapet ennå. Legg til din første vare 👇",
+            "🧊 Fryser": "Ingen varer i fryseren ennå. Legg til noe når du fyller på 👇",
+            "🍞 Mat": "Ingen tørrvarer her ennå. Legg til din første vare 👇",
+            "❓ Ukjent": "Ingen varer uten kategori akkurat nå.",
+        }
+        st.info(tomtekster.get(kategori, "Ingen varer her ennå."))
     else:
         for v in items:
             if v.get("__slettet_placeholder"):
@@ -407,7 +438,13 @@ for kategori, items in grupper.items():
 
             prioritet = prioritet_for_dager(dager_igjen_verdi)
             grunn, urgency = grunn_og_urgency(dager_igjen_verdi)
+            mengde_tekst = format_mengde(v)
             varenavn = escape(v["navn"].capitalize())
+            vare_tittel = varenavn
+
+            if mengde_tekst:
+                vare_tittel = f"{varenavn} · {escape(mengde_tekst)}"
+
             with st.container(border=True):
                 st.markdown(
                     f"""
@@ -426,7 +463,7 @@ for kategori, items in grupper.items():
                             justify-content: space-between;
                         ">
                             <div style="font-size: 0.98rem; font-weight: 800; line-height: 1.2;">
-                                {varenavn}
+                                {vare_tittel}
                             </div>
                             <div style="
                                 background: {prioritet['badge_bg']};
@@ -448,7 +485,7 @@ for kategori, items in grupper.items():
                     unsafe_allow_html=True,
                 )
 
-                brukt_col, kastet_col, slett_col = st.columns(3)
+                brukt_col, kastet_col = st.columns(2)
 
                 with brukt_col:
                     if st.button("✓ Brukt", key=f"spist_{v['id']}", type="primary", use_container_width=True):
@@ -468,6 +505,8 @@ for kategori, items in grupper.items():
                         st.session_state.legg_til_pa_nytt_vare = {
                             "navn": v["navn"],
                             "kategori": v.get("kategori", "ukjent"),
+                            "mengde": v.get("mengde"),
+                            "enhet": v.get("enhet", ""),
                             "request_id": request_id
                         }
                         st.rerun()
@@ -479,7 +518,9 @@ for kategori, items in grupper.items():
                             "navn": v["navn"],
                             "kategori": v.get("kategori", "ukjent"),
                             "utløpsdato": v.get("holdbar_til"),
-                            "dato_kastet": date.today().isoformat()
+                            "dato_kastet": date.today().isoformat(),
+                            "mengde": v.get("mengde"),
+                            "enhet": v.get("enhet", "")
                         }).execute()
                         kastet_data = kastet_response.data or []
                         kastet_id = kastet_data[0].get("id") if kastet_data else None
@@ -499,30 +540,18 @@ for kategori, items in grupper.items():
                         st.session_state.legg_til_pa_nytt_vare = {
                             "navn": v["navn"],
                             "kategori": v.get("kategori", "ukjent"),
+                            "mengde": v.get("mengde"),
+                            "enhet": v.get("enhet", ""),
                             "request_id": request_id
                         }
 
                         st.rerun()
 
-                with slett_col:
-                    if st.button("🗑️ Slett", key=f"slett_{v['id']}", use_container_width=True):
-                        supabase.table(VARER_TABLE).update({
-                            "status": "slettet"
-                        }).eq("id", v["id"]).execute()
-                        st.session_state.pop("spist_feedback", None)
-                        st.session_state.inline_slettet_vare = {
-                            **v,
-                            "__slettet_placeholder": True,
-                        }
-                        st.session_state.angre_handling = {
-                            "handling": "slettet",
-                            "vare_id": v["id"],
-                            "navn": v["navn"],
-                        }
-                        st.rerun()
-
                 with st.expander("Detaljer", expanded=False):
                     st.write(f"Lagt til: {dato_formatert}")
+
+                    if mengde_tekst:
+                        st.write(f"Mengde: {mengde_tekst}")
 
                     if dager_igjen_verdi is None:
                         st.write("Holdbar til: ukjent")
@@ -550,6 +579,25 @@ for kategori, items in grupper.items():
                         }).eq("id", v["id"]).execute()
 
                         st.session_state.dato_endret_feedback = f"Oppdaterte dato for {v['navn']}."
+                        st.rerun()
+
+                tom_col, slett_col = st.columns([3, 1])
+
+                with slett_col:
+                    if st.button("Slett", key=f"slett_{v['id']}", use_container_width=True):
+                        supabase.table(VARER_TABLE).update({
+                            "status": "slettet"
+                        }).eq("id", v["id"]).execute()
+                        st.session_state.pop("spist_feedback", None)
+                        st.session_state.inline_slettet_vare = {
+                            **v,
+                            "__slettet_placeholder": True,
+                        }
+                        st.session_state.angre_handling = {
+                            "handling": "slettet",
+                            "vare_id": v["id"],
+                            "navn": v["navn"],
+                        }
                         st.rerun()
 
             st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)

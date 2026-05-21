@@ -2,8 +2,9 @@ import streamlit as st
 import re
 from html import escape
 from datetime import date
-from utils import normalize, get_varer_clean, vis_i_dag_stripe
+from utils import normalize, get_varer_clean, rydd_varer_hjemme_angre_state, vis_i_dag_stripe
 
+rydd_varer_hjemme_angre_state()
 vis_i_dag_stripe()
 
 varer = get_varer_clean()

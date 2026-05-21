@@ -1,9 +1,11 @@
 import streamlit as st
 import re
 from datetime import date, timedelta
-from utils import VARER_TABLE, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
+from utils import VARER_TABLE, get_supabase_client, get_varer_clean, insert_vare, normalize, rydd_varer_hjemme_angre_state, vis_i_dag_stripe
 
 supabase = get_supabase_client()
+
+rydd_varer_hjemme_angre_state()
 
 
 def hent_varenavn(tekst):
@@ -36,6 +38,7 @@ DATO_VALG = [
 ]
 
 KATEGORIER = ["kjøleskap", "fryser", "mat"]
+ENHETER = ["", "stk", "pakke", "poser", "g", "kg", "dl", "l"]
 
 
 def legg_til_hurtigvare(varenavn, input_key):
@@ -88,6 +91,12 @@ st.markdown(
         background: #d8eedf;
         border-color: #3f8753;
         color: #184b28;
+    }
+
+    .optional-label {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
     }
     </style>
     """,
@@ -165,6 +174,24 @@ holdbar_til = st.date_input(
     key=holdbar_til_key
 )
 
+st.markdown("### Mengde <span class='optional-label'>(valgfritt)</span>", unsafe_allow_html=True)
+
+mengde_col, enhet_col = st.columns(2)
+
+with mengde_col:
+    mengde = st.number_input(
+        "Mengde",
+        min_value=0.0,
+        step=1.0,
+        value=1.0
+    )
+
+with enhet_col:
+    enhet = st.selectbox(
+        "Enhet",
+        ENHETER
+    )
+
 kategori = st.selectbox(
     "Kategori",
     KATEGORIER,
@@ -204,12 +231,18 @@ if st.button("Legg til varer"):
 
         lagt_til.append(ny_vare)
 
-        supabase.table(VARER_TABLE).insert({
+        vare_data = {
             "navn": ny_vare,
             "kategori": kategori,
             "utløpsdato": holdbar_til.isoformat(),
-            "status": "aktiv"
-        }).execute()
+            "status": "aktiv",
+        }
+
+        if enhet:
+            vare_data["mengde"] = mengde
+            vare_data["enhet"] = enhet
+
+        insert_vare(supabase, vare_data)
         varer_hjemme.add(normalisert_vare)
 
     info_meldinger = []
