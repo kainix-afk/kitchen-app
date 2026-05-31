@@ -3,10 +3,15 @@ import re
 from html import escape
 from datetime import date
 import utils
-from utils import normalize, get_varer_clean, vis_i_dag_stripe
+from utils import VARER_TABLE, format_mengde, get_supabase_client, normalize, get_varer_clean, vis_i_dag_stripe
 
 getattr(utils, "rydd_varer_hjemme_angre_state", lambda: None)()
+supabase = get_supabase_client()
 vis_i_dag_stripe()
+
+if "middag_brukt_feedback" in st.session_state:
+    st.success(st.session_state.middag_brukt_feedback)
+    del st.session_state.middag_brukt_feedback
 
 varer = get_varer_clean()
 
@@ -111,6 +116,78 @@ def vurder_rett(rett, ingredienser):
     }
 
 
+def vare_label(vare):
+    navn = vare.get("navn", "").capitalize()
+    mengde_tekst = format_mengde(vare)
+
+    if mengde_tekst:
+        return f"{navn} · {mengde_tekst}"
+
+    return navn
+
+
+def unike_varer(varer_liste):
+    sett = set()
+    unike = []
+
+    for vare in varer_liste:
+        vare_id = vare.get("id")
+
+        if not vare_id or vare_id in sett:
+            continue
+
+        sett.add(vare_id)
+        unike.append(vare)
+
+    return unike
+
+
+def vis_lag_middag(forslag, key_prefix):
+    rett = forslag["rett"]
+    brukte_varer = unike_varer(forslag["brukte_varer"])
+    bekreft_key = f"middag_bekreft_{key_prefix}"
+
+    if not brukte_varer:
+        return
+
+    if st.session_state.get(bekreft_key):
+        st.write("Dette vil markere brukte varer som brukt:")
+        valgte_varer = []
+
+        for vare in brukte_varer:
+            if st.checkbox(
+                vare_label(vare),
+                value=True,
+                key=f"bruk_middag_{key_prefix}_{vare['id']}",
+            ):
+                valgte_varer.append(vare)
+
+        avbryt_col, bruk_col = st.columns(2)
+
+        with avbryt_col:
+            if st.button("Avbryt", key=f"avbryt_middag_{key_prefix}", use_container_width=True):
+                st.session_state.pop(bekreft_key, None)
+                st.rerun()
+
+        with bruk_col:
+            if st.button("Bruk varer", key=f"bruk_middag_{key_prefix}", type="primary", use_container_width=True):
+                if not valgte_varer:
+                    st.warning("Velg minst én vare først.")
+                    st.stop()
+
+                for vare in valgte_varer:
+                    supabase.table(VARER_TABLE).update({
+                        "status": "spist"
+                    }).eq("id", vare["id"]).execute()
+
+                st.session_state.pop(bekreft_key, None)
+                st.session_state.middag_brukt_feedback = f"Markerte {len(valgte_varer)} varer som brukt for {rett}."
+                st.rerun()
+    elif st.button("Lag denne middagen", key=f"lag_middag_{key_prefix}", use_container_width=True):
+        st.session_state[bekreft_key] = True
+        st.rerun()
+
+
 # Steg 1: vurder alle rettene mot varene du har hjemme.
 forslag = [
     vurder_rett(rett, ingredienser)
@@ -179,6 +256,8 @@ if dagens_valg:
             for vare in dagens_valg["varer_som_haster"]
         ]
         st.write(f"Bra valg fordi dette bruker varer som snart går ut: {', '.join(navn)}.")
+
+    vis_lag_middag(dagens_valg, "dagens")
 else:
     st.markdown(
         """
@@ -228,10 +307,14 @@ st.subheader("Alle forslag")
 
 if kan_lage:
     st.success("✅ Kan lage nå")
-    for forslag in kan_lage:
-        st.write(
-            f"• {forslag['rett']} — bruker: {', '.join(forslag['ingredienser'])}"
-        )
+    for index, forslag in enumerate(kan_lage):
+        with st.expander(f"{forslag['rett']} — bruker: {', '.join(forslag['ingredienser'])}", expanded=False):
+            st.write("Varer som brukes:")
+
+            for vare in unike_varer(forslag["brukte_varer"]):
+                st.write(f"• {vare_label(vare)}")
+
+            vis_lag_middag(forslag, f"liste_{index}")
 
 if nesten:
     st.warning("🟡 Mangler én ingrediens")

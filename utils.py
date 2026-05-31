@@ -23,17 +23,36 @@ def format_mengde(vare):
         return ""
 
     try:
-        if float(mengde) == 0:
-            return ""
-    except (TypeError, ValueError):
-        pass
+        mengde_verdi = float(mengde)
 
-    try:
-        mengde_tekst = f"{float(mengde):g}"
+        if mengde_verdi == 0:
+            return ""
+
+        mengde_tekst = f"{mengde_verdi:g}"
     except (TypeError, ValueError):
         mengde_tekst = str(mengde).strip()
 
-    return f"{mengde_tekst} {enhet}".strip()
+    if not mengde_tekst or mengde_tekst.lower() == "none":
+        return ""
+
+    if enhet.lower() == "none":
+        enhet = ""
+
+    enhet_labels = {
+        "l": "liter",
+        "liter": "liter",
+        "dl": "dl",
+        "g": "g",
+        "kg": "kg",
+        "stk": "stk",
+        "pakke": "pakke",
+        "pakker": "pakker",
+        "pose": "pose",
+        "poser": "poser",
+    }
+    enhet_tekst = enhet_labels.get(enhet.lower(), enhet)
+
+    return f"{mengde_tekst} {enhet_tekst}".strip()
 
 
 def insert_vare(supabase, vare):

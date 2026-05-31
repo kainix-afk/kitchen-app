@@ -2,7 +2,7 @@ import streamlit as st
 from collections import Counter
 from datetime import date, timedelta
 import utils
-from utils import KASTET_TABLE, get_supabase_client, vis_i_dag_stripe
+from utils import KASTET_TABLE, format_mengde, get_supabase_client, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
@@ -28,24 +28,34 @@ def innenfor_periode(vare, dager):
     return date.fromisoformat(dato_kastet) >= grense
 
 
+def varenavn_med_mengde(vare):
+    navn = (vare.get("navn") or "Ukjent").capitalize()
+    mengde_tekst = format_mengde(vare)
+
+    if mengde_tekst:
+        return f"{navn} · {mengde_tekst}"
+
+    return navn
+
+
 def vis_kastet_statistikk(varer, tom_tekst):
     if not varer:
         st.write(tom_tekst)
         return
 
-    teller = Counter(v["navn"] for v in varer)
+    teller = Counter(varenavn_med_mengde(v) for v in varer)
     st.metric("Kastet", len(varer))
 
     st.subheader("Mest kastet")
     for navn, antall in teller.most_common(3):
-        st.write(f"• {navn.capitalize()} – {antall}")
+        st.write(f"• {navn} – {antall}")
 
     with st.expander("Se alle"):
         for navn, antall in teller.most_common():
             if antall == 1:
-                st.write(f"• {navn.capitalize()}: kastet 1 gang")
+                st.write(f"• {navn}: kastet 1 gang")
             else:
-                st.write(f"• {navn.capitalize()}: kastet {antall} ganger")
+                st.write(f"• {navn}: kastet {antall} ganger")
 
 
 if not kastet:
