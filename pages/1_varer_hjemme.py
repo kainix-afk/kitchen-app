@@ -6,6 +6,9 @@ from html import escape
 
 supabase = get_supabase_client()
 
+KATEGORIER = ["kjøleskap", "fryser", "mat", "ukjent"]
+ENHETER = ["", "stk", "pakke", "pose", "g", "kg", "dl", "liter"]
+
 vis_i_dag_stripe()
 
 st.title("🏠 Varer hjemme")
@@ -139,6 +142,10 @@ if "dato_endret_feedback" in st.session_state:
     st.success(st.session_state.dato_endret_feedback)
     del st.session_state.dato_endret_feedback
 
+if "vare_endret_feedback" in st.session_state:
+    st.success(st.session_state.vare_endret_feedback)
+    del st.session_state.vare_endret_feedback
+
 # 1. HENT DATA
 response = supabase.table(VARER_TABLE).select("*").eq("status", "aktiv").execute()
 varer = response.data
@@ -241,7 +248,97 @@ for v in varer:
 
 varer = normaliserte
 
-# 3. GRUPPER
+def holdbar_dato(vare):
+    raw_holdbar = vare.get("holdbar_til")
+
+    if not raw_holdbar:
+        return None
+
+    try:
+        return date.fromisoformat(raw_holdbar)
+    except (TypeError, ValueError):
+        return None
+
+
+def dager_igjen(vare):
+    dato = holdbar_dato(vare)
+
+    if dato is None:
+        return None
+
+    return (dato - date.today()).days
+
+
+def kategori_key(vare):
+    kategori = vare.get("kategori", "ukjent")
+
+    if kategori == "kjøleskap":
+        return "🥶 Kjøleskap"
+    if kategori == "fryser":
+        return "🧊 Fryser"
+    if kategori == "mat":
+        return "🍞 Mat"
+
+    return "❓ Ukjent"
+
+
+def mengde_til_float(verdi):
+    if verdi in (None, ""):
+        return 0.0
+
+    try:
+        return float(verdi)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def normalisert_enhet(enhet):
+    enhet = (enhet or "").strip()
+
+    if enhet.lower() in ("none", "l"):
+        return "liter" if enhet.lower() == "l" else ""
+
+    return enhet
+
+
+def oppdater_vare(vare_id, vare_data):
+    supabase.table(VARER_TABLE).update(vare_data).eq("id", vare_id).execute()
+
+
+# 3. UI
+filter_col, sort_col = st.columns([2, 1])
+
+with filter_col:
+    filter_valg = st.radio(
+        "Vis",
+        ["Alle", "Haster", "Utgått"],
+        horizontal=True,
+        key="varer_hjemme_filter",
+    )
+
+with sort_col:
+    sortering = st.radio(
+        "Sorter etter",
+        ["Dato", "Navn"],
+        horizontal=True,
+        key="varer_hjemme_sortering",
+    )
+
+filtrerte_varer = []
+
+for vare in varer:
+    dager = dager_igjen(vare)
+
+    if filter_valg == "Haster" and (dager is None or dager > 3):
+        continue
+    if filter_valg == "Utgått" and (dager is None or dager >= 0):
+        continue
+
+    filtrerte_varer.append(vare)
+
+vis_bruk_dette_forst(filtrerte_varer, key_prefix="varer_hjemme")
+
+# 4. GRUPPER
 grupper = {
     "🥶 Kjøleskap": [],
     "🧊 Fryser": [],
@@ -249,38 +346,13 @@ grupper = {
     "❓ Ukjent": []
 }
 
-for v in varer:
-    kategori = v["kategori"]
-
-    if kategori == "kjøleskap":
-        key = "🥶 Kjøleskap"
-    elif kategori == "fryser":
-        key = "🧊 Fryser"
-    elif kategori == "mat":
-        key = "🍞 Mat"
-    else:
-        key = "❓ Ukjent"
-
-    grupper[key].append(v)
+for v in filtrerte_varer:
+    grupper[kategori_key(v)].append(v)
 
 inline_slettet_vare = st.session_state.get("inline_slettet_vare")
 
 if inline_slettet_vare and st.session_state.get("angre_handling", {}).get("handling") == "slettet":
-    kategori = inline_slettet_vare.get("kategori", "ukjent")
-
-    if kategori == "kjøleskap":
-        key = "🥶 Kjøleskap"
-    elif kategori == "fryser":
-        key = "🧊 Fryser"
-    elif kategori == "mat":
-        key = "🍞 Mat"
-    else:
-        key = "❓ Ukjent"
-
-    grupper[key].append(inline_slettet_vare)
-
-# 4. UI
-vis_bruk_dette_forst(varer, key_prefix="varer_hjemme")
+    grupper[kategori_key(inline_slettet_vare)].append(inline_slettet_vare)
 
 def grunn_og_urgency(dager):
     if dager is None:
@@ -356,14 +428,17 @@ def prioritet_for_dager(dager):
 
 
 def vare_sortering(vare):
-    raw_holdbar = vare.get("holdbar_til")
+    navn = vare.get("navn", "").lower()
 
-    if not raw_holdbar:
-        return (3, 9999, vare.get("dato_lagt_til", ""))
+    if sortering == "Navn":
+        return (navn, vare.get("dato_lagt_til", ""))
 
-    dager = (date.fromisoformat(raw_holdbar) - date.today()).days
-    prioritet = prioritet_for_dager(dager)
-    return (prioritet["rank"], dager, vare.get("dato_lagt_til", ""))
+    dager = dager_igjen(vare)
+
+    if dager is None:
+        return (1, 9999, navn)
+
+    return (0, dager, navn)
 
 
 def kategori_telling(items):
@@ -374,14 +449,9 @@ def kategori_telling(items):
     brukes_snart = 0
 
     for vare in synlige_varer:
-        raw_holdbar = vare.get("holdbar_til")
+        dager = dager_igjen(vare)
 
-        if not raw_holdbar:
-            continue
-
-        dager = (date.fromisoformat(raw_holdbar) - date.today()).days
-
-        if dager <= 3:
+        if dager is not None and dager <= 3:
             brukes_snart += 1
 
     return len(synlige_varer), brukes_snart
@@ -389,215 +459,308 @@ def kategori_telling(items):
 
 for kategori, items in grupper.items():
     antall_varer, brukes_snart = kategori_telling(items)
-    st.subheader(f"{kategori}: {antall_varer} varer")
-    st.caption(f"Brukes snart: {brukes_snart}")
+    with st.expander(f"{kategori} · {antall_varer} varer", expanded=True):
+        st.caption(f"Brukes snart: {brukes_snart}")
 
-    items.sort(key=vare_sortering)
+        items.sort(key=vare_sortering)
 
-    if not items:
-        tomtekster = {
-            "🥶 Kjøleskap": "Ingen varer i kjøleskapet ennå. Legg til din første vare 👇",
-            "🧊 Fryser": "Ingen varer i fryseren ennå. Legg til noe når du fyller på 👇",
-            "🍞 Mat": "Ingen tørrvarer her ennå. Legg til din første vare 👇",
-            "❓ Ukjent": "Ingen varer uten kategori akkurat nå.",
-        }
-        st.info(tomtekster.get(kategori, "Ingen varer her ennå."))
-    else:
-        for v in items:
-            if v.get("__slettet_placeholder"):
+        if not items:
+            tomtekster = {
+                "🥶 Kjøleskap": "Ingen varer i kjøleskapet ennå. Legg til din første vare 👇",
+                "🧊 Fryser": "Ingen varer i fryseren ennå. Legg til noe når du fyller på 👇",
+                "🍞 Mat": "Ingen tørrvarer her ennå. Legg til din første vare 👇",
+                "❓ Ukjent": "Ingen varer uten kategori akkurat nå.",
+            }
+            st.info(tomtekster.get(kategori, "Ingen varer her ennå."))
+        else:
+            for v in items:
+                if v.get("__slettet_placeholder"):
+                    with st.container(border=True):
+                        angre_col, tekst_col = st.columns([1, 3])
+
+                        with angre_col:
+                            if st.button("Angre", key=f"angre_slett_{v['id']}", use_container_width=True):
+                                angre_siste_handling()
+
+                        with tekst_col:
+                            st.write(f"{v['navn'].capitalize()} ble slettet.")
+
+                    st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
+                    continue
+
+                raw_dato = v.get("dato_lagt_til")
+                raw_holdbar = v.get("holdbar_til")
+
+                if raw_dato:
+                    dato_obj = datetime.fromisoformat(raw_dato)
+                    dato_formatert = dato_obj.strftime("%d.%m.%Y")
+                else:
+                    dato_formatert = "ukjent dato"
+
+                holdbar_obj = holdbar_dato(v)
+
+                if holdbar_obj:
+                    dager_igjen_verdi = (holdbar_obj - date.today()).days
+                    holdbar_formatert = holdbar_obj.strftime("%d.%m.%Y")
+                else:
+                    dager_igjen_verdi = None
+                    holdbar_formatert = "ukjent"
+
+                prioritet = prioritet_for_dager(dager_igjen_verdi)
+                grunn, urgency = grunn_og_urgency(dager_igjen_verdi)
+                mengde_tekst = format_mengde(v)
+                varenavn = escape(v["navn"].capitalize())
+                vare_tittel = varenavn
+
+                if mengde_tekst:
+                    vare_tittel = f"{varenavn} · {escape(mengde_tekst)}"
+
                 with st.container(border=True):
-                    angre_col, tekst_col = st.columns([1, 3])
-
-                    with angre_col:
-                        if st.button("Angre", key=f"angre_slett_{v['id']}", use_container_width=True):
-                            angre_siste_handling()
-
-                    with tekst_col:
-                        st.write(f"{v['navn'].capitalize()} ble slettet.")
-
-                st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
-                continue
-
-            raw_dato = v.get("dato_lagt_til")
-            raw_holdbar = v.get("holdbar_til")
-
-            if raw_dato:
-                dato_obj = datetime.fromisoformat(raw_dato)
-                dato_formatert = dato_obj.strftime("%d.%m.%Y")
-            else:
-                dato_formatert = "ukjent dato"
-
-            if raw_holdbar:
-                holdbar_obj = date.fromisoformat(raw_holdbar)
-                dager_igjen_verdi = (holdbar_obj - date.today()).days
-                holdbar_formatert = holdbar_obj.strftime("%d.%m.%Y")
-            else:
-                holdbar_obj = None
-                dager_igjen_verdi = None
-                holdbar_formatert = "ukjent"
-
-            prioritet = prioritet_for_dager(dager_igjen_verdi)
-            grunn, urgency = grunn_og_urgency(dager_igjen_verdi)
-            mengde_tekst = format_mengde(v)
-            varenavn = escape(v["navn"].capitalize())
-            vare_tittel = varenavn
-
-            if mengde_tekst:
-                vare_tittel = f"{varenavn} · {escape(mengde_tekst)}"
-
-            with st.container(border=True):
-                st.markdown(
-                    f"""
-                    <div style="
-                        background: {prioritet['bg']};
-                        border-left: 5px solid {prioritet['accent']};
-                        border-radius: 7px;
-                        color: {prioritet['text']};
-                        padding: 7px 9px 6px 9px;
-                        margin: -5px 0 6px 0;
-                    ">
+                    st.markdown(
+                        f"""
                         <div style="
-                            align-items: center;
-                            display: flex;
-                            gap: 8px;
-                            justify-content: space-between;
+                            background: {prioritet['bg']};
+                            border-left: 5px solid {prioritet['accent']};
+                            border-radius: 7px;
+                            color: {prioritet['text']};
+                            padding: 7px 9px 6px 9px;
+                            margin: -5px 0 6px 0;
                         ">
-                            <div style="font-size: 0.98rem; font-weight: 800; line-height: 1.2;">
-                                {vare_tittel}
-                            </div>
                             <div style="
-                                background: {prioritet['badge_bg']};
-                                border: 1px solid {prioritet['border']};
-                                border-radius: 999px;
-                                font-size: 0.78rem;
-                                font-weight: 800;
-                                padding: 2px 8px;
-                                white-space: nowrap;
+                                align-items: center;
+                                display: flex;
+                                gap: 8px;
+                                justify-content: space-between;
                             ">
-                                {prioritet['badge']}
+                                <div style="font-size: 0.98rem; font-weight: 800; line-height: 1.2;">
+                                    {vare_tittel}
+                                </div>
+                                <div style="
+                                    background: {prioritet['badge_bg']};
+                                    border: 1px solid {prioritet['border']};
+                                    border-radius: 999px;
+                                    font-size: 0.78rem;
+                                    font-weight: 800;
+                                    padding: 2px 8px;
+                                    white-space: nowrap;
+                                ">
+                                    {prioritet['badge']}
+                                </div>
+                            </div>
+                            <div style="font-size: 0.83rem; line-height: 1.3; margin-top: 2px;">
+                                {prioritet['tone']} · holdbar til {escape(holdbar_formatert)}
                             </div>
                         </div>
-                        <div style="font-size: 0.83rem; line-height: 1.3; margin-top: 2px;">
-                            {prioritet['tone']} · holdbar til {escape(holdbar_formatert)}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                brukt_col, kastet_col = st.columns(2)
-
-                with brukt_col:
-                    if st.button("✓ Brukt", key=f"spist_{v['id']}", type="primary", use_container_width=True):
-                        request_id = str(uuid.uuid4())
-
-                        supabase.table(VARER_TABLE).update({
-                            "status": "spist"
-                        }).eq("id", v["id"]).execute()
-                        st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
-                        st.session_state.pop("inline_slettet_vare", None)
-                        st.session_state.angre_handling = {
-                            "handling": "spist",
-                            "vare_id": v["id"],
-                            "navn": v["navn"],
-                            "request_id": request_id,
-                        }
-                        st.session_state.legg_til_pa_nytt_vare = {
-                            "navn": v["navn"],
-                            "kategori": v.get("kategori", "ukjent"),
-                            "mengde": v.get("mengde"),
-                            "enhet": v.get("enhet", ""),
-                            "request_id": request_id
-                        }
-                        st.rerun()
-
-                with kastet_col:
-                    if st.button("✕ Kastet", key=f"kastet_{v['id']}", use_container_width=True):
-                        request_id = str(uuid.uuid4())
-                        kastet_response = supabase.table(KASTET_TABLE).insert({
-                            "navn": v["navn"],
-                            "kategori": v.get("kategori", "ukjent"),
-                            "utløpsdato": v.get("holdbar_til"),
-                            "dato_kastet": date.today().isoformat(),
-                            "mengde": v.get("mengde"),
-                            "enhet": v.get("enhet", "")
-                        }).execute()
-                        kastet_data = kastet_response.data or []
-                        kastet_id = kastet_data[0].get("id") if kastet_data else None
-
-                        supabase.table(VARER_TABLE).update({
-                            "status": "kastet"
-                        }).eq("id", v["id"]).execute()
-                        st.session_state.spist_feedback = f"Markerte {v['navn']} som kastet."
-                        st.session_state.pop("inline_slettet_vare", None)
-                        st.session_state.angre_handling = {
-                            "handling": "kastet",
-                            "vare_id": v["id"],
-                            "navn": v["navn"],
-                            "request_id": request_id,
-                            "kastet_id": kastet_id,
-                        }
-                        st.session_state.legg_til_pa_nytt_vare = {
-                            "navn": v["navn"],
-                            "kategori": v.get("kategori", "ukjent"),
-                            "mengde": v.get("mengde"),
-                            "enhet": v.get("enhet", ""),
-                            "request_id": request_id
-                        }
-
-                        st.rerun()
-
-                with st.expander("Detaljer", expanded=False):
-                    st.write(f"Lagt til: {dato_formatert}")
-
-                    if mengde_tekst:
-                        st.write(f"Mengde: {mengde_tekst}")
-
-                    if dager_igjen_verdi is None:
-                        st.write("Holdbar til: ukjent")
-                    elif dager_igjen_verdi < 0:
-                        st.write(f"Holdbar til: {holdbar_formatert} (utgått)")
-                    elif dager_igjen_verdi == 0:
-                        st.write(f"Holdbar til: {holdbar_formatert} (går ut i dag)")
-                    elif dager_igjen_verdi == 1:
-                        st.write(f"Holdbar til: {holdbar_formatert} (1 dag igjen)")
-                    else:
-                        st.write(f"Holdbar til: {holdbar_formatert} ({dager_igjen_verdi} dager igjen)")
-
-                    st.write(f"**Grunn:** {grunn}")
-                    st.write(f"**Urgency:** {urgency}")
-
-                    ny_holdbar_til = st.date_input(
-                        "Endre holdbarhetsdato",
-                        value=holdbar_obj if raw_holdbar else date.today() + timedelta(days=7),
-                        key=f"endre_holdbar_til_{v['id']}_{raw_holdbar or 'ukjent'}"
+                        """,
+                        unsafe_allow_html=True,
                     )
 
-                    if st.button("Lagre dato", key=f"lagre_dato_{v['id']}", use_container_width=True):
-                        supabase.table(VARER_TABLE).update({
-                            "utløpsdato": ny_holdbar_til.isoformat()
-                        }).eq("id", v["id"]).execute()
+                    if st.session_state.get("rediger_vare_id") == v["id"]:
+                        rediger_kategori = v.get("kategori", "ukjent")
 
-                        st.session_state.dato_endret_feedback = f"Oppdaterte dato for {v['navn']}."
-                        st.rerun()
+                        if rediger_kategori not in KATEGORIER:
+                            rediger_kategori = "ukjent"
 
-                tom_col, slett_col = st.columns([3, 1])
+                        rediger_enhet = normalisert_enhet(v.get("enhet", ""))
+                        enhet_valg = ENHETER if rediger_enhet in ENHETER else ENHETER + [rediger_enhet]
 
-                with slett_col:
-                    if st.button("Slett", key=f"slett_{v['id']}", use_container_width=True):
-                        supabase.table(VARER_TABLE).update({
-                            "status": "slettet"
-                        }).eq("id", v["id"]).execute()
-                        st.session_state.pop("spist_feedback", None)
-                        st.session_state.inline_slettet_vare = {
-                            **v,
-                            "__slettet_placeholder": True,
-                        }
-                        st.session_state.angre_handling = {
-                            "handling": "slettet",
-                            "vare_id": v["id"],
-                            "navn": v["navn"],
-                        }
-                        st.rerun()
+                        with st.form(f"rediger_vare_{v['id']}"):
+                            st.markdown("**Rediger vare**")
+                            nytt_navn = st.text_input(
+                                "Navn",
+                                value=v.get("navn", ""),
+                                key=f"rediger_navn_{v['id']}",
+                            )
+                            ny_holdbar_til = st.date_input(
+                                "Holdbar til",
+                                value=holdbar_obj or date.today() + timedelta(days=7),
+                                key=f"rediger_holdbar_til_{v['id']}",
+                            )
 
-            st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
+                            rediger_mengde_col, rediger_enhet_col = st.columns(2)
+
+                            with rediger_mengde_col:
+                                ny_mengde = st.number_input(
+                                    "Mengde",
+                                    min_value=0.0,
+                                    step=1.0,
+                                    value=mengde_til_float(v.get("mengde")),
+                                    key=f"rediger_mengde_{v['id']}",
+                                )
+
+                            with rediger_enhet_col:
+                                ny_enhet = st.selectbox(
+                                    "Enhet",
+                                    enhet_valg,
+                                    index=enhet_valg.index(rediger_enhet),
+                                    key=f"rediger_enhet_{v['id']}",
+                                )
+
+                            ny_kategori = st.selectbox(
+                                "Kategori",
+                                KATEGORIER,
+                                index=KATEGORIER.index(rediger_kategori),
+                                key=f"rediger_kategori_{v['id']}",
+                            )
+
+                            lagre_col, avbryt_col = st.columns(2)
+
+                            with lagre_col:
+                                lagre_redigering = st.form_submit_button(
+                                    "Lagre endringer",
+                                    use_container_width=True,
+                                )
+
+                            with avbryt_col:
+                                avbryt_redigering = st.form_submit_button(
+                                    "Avbryt",
+                                    use_container_width=True,
+                                )
+
+                        if avbryt_redigering:
+                            st.session_state.pop("rediger_vare_id", None)
+                            st.rerun()
+
+                        if lagre_redigering:
+                            nytt_navn = nytt_navn.strip()
+
+                            if not nytt_navn:
+                                st.warning("Navn kan ikke være tomt.")
+                                st.stop()
+
+                            vare_data = {
+                                "navn": nytt_navn.lower(),
+                                "kategori": ny_kategori,
+                                "utløpsdato": ny_holdbar_til.isoformat(),
+                                "mengde": ny_mengde if ny_mengde > 0 else None,
+                                "enhet": ny_enhet if ny_mengde > 0 else "",
+                            }
+                            oppdater_vare(v["id"], vare_data)
+                            st.session_state.vare_endret_feedback = f"Oppdaterte {nytt_navn}."
+                            st.session_state.pop("rediger_vare_id", None)
+                            st.rerun()
+
+                    brukt_col, kastet_col = st.columns(2)
+
+                    with brukt_col:
+                        if st.button("✓ Brukt", key=f"spist_{v['id']}", type="primary", use_container_width=True):
+                            request_id = str(uuid.uuid4())
+
+                            supabase.table(VARER_TABLE).update({
+                                "status": "spist"
+                            }).eq("id", v["id"]).execute()
+                            st.session_state.spist_feedback = "Nice 👌 du reddet mat fra å bli kastet"
+                            st.session_state.pop("inline_slettet_vare", None)
+                            st.session_state.pop("rediger_vare_id", None)
+                            st.session_state.angre_handling = {
+                                "handling": "spist",
+                                "vare_id": v["id"],
+                                "navn": v["navn"],
+                                "request_id": request_id,
+                            }
+                            st.session_state.legg_til_pa_nytt_vare = {
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "mengde": v.get("mengde"),
+                                "enhet": v.get("enhet", ""),
+                                "request_id": request_id
+                            }
+                            st.rerun()
+
+                    with kastet_col:
+                        if st.button("✕ Kastet", key=f"kastet_{v['id']}", use_container_width=True):
+                            request_id = str(uuid.uuid4())
+                            kastet_response = supabase.table(KASTET_TABLE).insert({
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "utløpsdato": v.get("holdbar_til"),
+                                "dato_kastet": date.today().isoformat(),
+                                "mengde": v.get("mengde"),
+                                "enhet": v.get("enhet", "")
+                            }).execute()
+                            kastet_data = kastet_response.data or []
+                            kastet_id = kastet_data[0].get("id") if kastet_data else None
+
+                            supabase.table(VARER_TABLE).update({
+                                "status": "kastet"
+                            }).eq("id", v["id"]).execute()
+                            st.session_state.spist_feedback = f"Markerte {v['navn']} som kastet."
+                            st.session_state.pop("inline_slettet_vare", None)
+                            st.session_state.pop("rediger_vare_id", None)
+                            st.session_state.angre_handling = {
+                                "handling": "kastet",
+                                "vare_id": v["id"],
+                                "navn": v["navn"],
+                                "request_id": request_id,
+                                "kastet_id": kastet_id,
+                            }
+                            st.session_state.legg_til_pa_nytt_vare = {
+                                "navn": v["navn"],
+                                "kategori": v.get("kategori", "ukjent"),
+                                "mengde": v.get("mengde"),
+                                "enhet": v.get("enhet", ""),
+                                "request_id": request_id
+                            }
+
+                            st.rerun()
+
+                    if st.checkbox("Detaljer", key=f"detaljer_{v['id']}"):
+                        st.write(f"Lagt til: {dato_formatert}")
+
+                        if mengde_tekst:
+                            st.write(f"Mengde: {mengde_tekst}")
+
+                        if dager_igjen_verdi is None:
+                            st.write("Holdbar til: ukjent")
+                        elif dager_igjen_verdi < 0:
+                            st.write(f"Holdbar til: {holdbar_formatert} (utgått)")
+                        elif dager_igjen_verdi == 0:
+                            st.write(f"Holdbar til: {holdbar_formatert} (går ut i dag)")
+                        elif dager_igjen_verdi == 1:
+                            st.write(f"Holdbar til: {holdbar_formatert} (1 dag igjen)")
+                        else:
+                            st.write(f"Holdbar til: {holdbar_formatert} ({dager_igjen_verdi} dager igjen)")
+
+                        st.write(f"**Grunn:** {grunn}")
+                        st.write(f"**Urgency:** {urgency}")
+
+                        ny_holdbar_til = st.date_input(
+                            "Endre holdbarhetsdato",
+                            value=holdbar_obj or date.today() + timedelta(days=7),
+                            key=f"endre_holdbar_til_{v['id']}_{raw_holdbar or 'ukjent'}"
+                        )
+
+                        if st.button("Lagre dato", key=f"lagre_dato_{v['id']}", use_container_width=True):
+                            supabase.table(VARER_TABLE).update({
+                                "utløpsdato": ny_holdbar_til.isoformat()
+                            }).eq("id", v["id"]).execute()
+
+                            st.session_state.dato_endret_feedback = f"Oppdaterte dato for {v['navn']}."
+                            st.rerun()
+
+                    tom_col, rediger_col, slett_col = st.columns([2, 1, 1])
+
+                    with rediger_col:
+                        if st.button("Rediger", key=f"rediger_{v['id']}", use_container_width=True):
+                            st.session_state.rediger_vare_id = v["id"]
+                            st.rerun()
+
+                    with slett_col:
+                        if st.button("Slett", key=f"slett_{v['id']}", use_container_width=True):
+                            supabase.table(VARER_TABLE).update({
+                                "status": "slettet"
+                            }).eq("id", v["id"]).execute()
+                            st.session_state.pop("spist_feedback", None)
+                            st.session_state.pop("rediger_vare_id", None)
+                            st.session_state.inline_slettet_vare = {
+                                **v,
+                                "__slettet_placeholder": True,
+                            }
+                            st.session_state.angre_handling = {
+                                "handling": "slettet",
+                                "vare_id": v["id"],
+                                "navn": v["navn"],
+                            }
+                            st.rerun()
+
+                st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)

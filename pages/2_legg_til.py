@@ -2,7 +2,7 @@ import streamlit as st
 import re
 from datetime import date, timedelta
 import utils
-from utils import VARER_TABLE, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
+from utils import VARER_TABLE, format_mengde, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
@@ -45,7 +45,7 @@ DATO_VALG = [
 ]
 
 KATEGORIER = ["kjøleskap", "fryser", "mat"]
-ENHETER = ["", "stk", "pakke", "poser", "g", "kg", "dl", "l"]
+ENHETER = ["", "stk", "pakke", "pose", "g", "kg", "dl", "liter"]
 
 
 def hurtigvare_navn():
@@ -95,6 +95,16 @@ def sett_holdbarhetsdato_fra_i_dag(dager, input_key):
     st.session_state[input_key] = date.today() + timedelta(days=dager)
 
 
+def vare_kvittering(vare):
+    navn = vare.get("navn", "").strip()
+    mengde_tekst = format_mengde(vare)
+
+    if mengde_tekst:
+        return f"✅ {navn} · {mengde_tekst}"
+
+    return f"✅ {navn}"
+
+
 def vare_finnes_hjemme(varenavn):
     response = (
         supabase.table(VARER_TABLE)
@@ -139,7 +149,16 @@ st.markdown(
 )
 
 if "legg_til_feedback" in st.session_state:
-    st.success(st.session_state.legg_til_feedback)
+    feedback = st.session_state.legg_til_feedback
+
+    if isinstance(feedback, list):
+        st.success("La til:")
+
+        for linje in feedback:
+            st.write(linje)
+    else:
+        st.success(feedback)
+
     del st.session_state.legg_til_feedback
 
 if "legg_til_info" in st.session_state:
@@ -274,8 +293,6 @@ if legg_til_submit:
             hoppet_over_hjemme.append(ny_vare)
             continue
 
-        lagt_til.append(ny_vare)
-
         vare_data = {
             "navn": ny_vare,
             "kategori": kategori,
@@ -287,6 +304,7 @@ if legg_til_submit:
             vare_data["mengde"] = mengde
             vare_data["enhet"] = enhet
 
+        lagt_til.append(vare_kvittering(vare_data))
         insert_vare(supabase, vare_data)
         varer_hjemme.add(normalisert_vare)
 
@@ -303,7 +321,7 @@ if legg_til_submit:
         )
 
     if lagt_til:
-        st.session_state.legg_til_feedback = f"La til {len(lagt_til)} varer."
+        st.session_state.legg_til_feedback = lagt_til
         st.session_state.sist_valgt_kategori = kategori
         st.session_state.tøm_varer_input = True
 
