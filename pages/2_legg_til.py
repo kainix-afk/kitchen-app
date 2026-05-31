@@ -91,6 +91,10 @@ def sett_holdbarhetsdato(dager, input_key):
     st.session_state[input_key] = valgt_dato + timedelta(days=dager)
 
 
+def sett_holdbarhetsdato_fra_i_dag(dager, input_key):
+    st.session_state[input_key] = date.today() + timedelta(days=dager)
+
+
 def vare_finnes_hjemme(varenavn):
     response = (
         supabase.table(VARER_TABLE)
@@ -166,75 +170,82 @@ if "kategori_valg" not in st.session_state:
     st.session_state.kategori_valg = st.session_state.sist_valgt_kategori
 
 
-st.subheader("Hurtigvalg")
-
 labels = hurtigvare_labels()
-st.pills(
-    "Velg raske varer",
-    options=hurtigvare_navn(),
-    selection_mode="multi",
-    format_func=lambda varenavn: labels[varenavn],
-    key=hurtigvalg_key,
-    on_change=synk_hurtigvalg_med_tekst,
-    args=(hurtigvalg_key, varer_input_key),
-    label_visibility="collapsed",
-)
 
-navn_tekst = st.text_area(
-    "Varer",
-    placeholder="egg\nmelk\npaprika",
-    help="Skriv én vare per linje, eller skill med komma.",
-    key=varer_input_key,
-    on_change=synk_tekst_med_hurtigvalg,
-    args=(varer_input_key, hurtigvalg_key),
-)
+with st.form("legg_til_varer_form"):
+    st.subheader("Hurtigvalg")
 
-st.subheader("Holdbarhet")
+    valgte_hurtigvarer = st.pills(
+        "Velg raske varer",
+        options=hurtigvare_navn(),
+        selection_mode="multi",
+        format_func=lambda varenavn: labels[varenavn],
+        key=hurtigvalg_key,
+        label_visibility="collapsed",
+    )
 
-dato_cols = st.columns(3)
+    navn_tekst = st.text_area(
+        "Varer",
+        placeholder="egg\nmelk\npaprika",
+        help="Skriv én vare per linje, eller skill med komma.",
+        key=varer_input_key,
+    )
 
-for index, (label, dager) in enumerate(DATO_VALG):
-    with dato_cols[index]:
-        st.button(
-            label,
-            key=f"dato_{dager}_dager",
-            on_click=sett_holdbarhetsdato,
-            args=(dager, holdbar_til_key),
-            use_container_width=True,
+    st.subheader("Holdbarhet")
+
+    dato_cols = st.columns(3)
+
+    for index, (label, dager) in enumerate(DATO_VALG):
+        with dato_cols[index]:
+            st.form_submit_button(
+                label,
+                on_click=sett_holdbarhetsdato_fra_i_dag,
+                args=(dager, holdbar_til_key),
+                use_container_width=True,
+            )
+
+    holdbar_til = st.date_input(
+        "Holdbar til",
+        key=holdbar_til_key
+    )
+
+    st.markdown("### Mengde <span class='optional-label'>(valgfritt)</span>", unsafe_allow_html=True)
+
+    mengde_col, enhet_col = st.columns(2)
+
+    with mengde_col:
+        mengde = st.number_input(
+            "Mengde",
+            min_value=0.0,
+            step=1.0,
+            value=1.0
         )
 
-holdbar_til = st.date_input(
-    "Holdbar til",
-    key=holdbar_til_key
-)
+    with enhet_col:
+        enhet = st.selectbox(
+            "Enhet",
+            ENHETER
+        )
 
-st.markdown("### Mengde <span class='optional-label'>(valgfritt)</span>", unsafe_allow_html=True)
-
-mengde_col, enhet_col = st.columns(2)
-
-with mengde_col:
-    mengde = st.number_input(
-        "Mengde",
-        min_value=0.0,
-        step=1.0,
-        value=1.0
+    kategori = st.selectbox(
+        "Kategori",
+        KATEGORIER,
+        key="kategori_valg"
     )
 
-with enhet_col:
-    enhet = st.selectbox(
-        "Enhet",
-        ENHETER
-    )
+    legg_til_submit = st.form_submit_button("Legg til varer")
 
-kategori = st.selectbox(
-    "Kategori",
-    KATEGORIER,
-    key="kategori_valg"
-)
-
-if st.button("Legg til varer"):
+if legg_til_submit:
 
     nye_varenavn = hent_varenavn(navn_tekst)
+    eksisterende_input = {normalize(navn) for navn in nye_varenavn}
+
+    for hurtigvare in valgte_hurtigvarer or []:
+        normalisert_hurtigvare = normalize(hurtigvare)
+
+        if normalisert_hurtigvare not in eksisterende_input:
+            nye_varenavn.append(hurtigvare)
+            eksisterende_input.add(normalisert_hurtigvare)
 
     if not nye_varenavn:
         st.warning("Skriv inn minst én vare først 😄")
