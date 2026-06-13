@@ -335,6 +335,8 @@ def oppdater_vare(vare_id, vare_data):
                 if key not in data
             ]
         except Exception as error:
+            st.error(f"DEBUG update feilet: {error}")
+            raise
             siste_feil = error
 
             if not er_schema_feil(error):
