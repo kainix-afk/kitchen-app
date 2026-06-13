@@ -275,6 +275,7 @@ if legg_til_submit:
     lagt_til = []
     hoppet_over_input = []
     hoppet_over_hjemme = []
+    hoppet_over_mengde = []
     sett_i_input = set()
 
     for ny_vare in nye_varenavn:
@@ -300,7 +301,11 @@ if legg_til_submit:
         }
 
         lagt_til.append(vare_kvittering(vare_data))
-        insert_vare(supabase, vare_data)
+        _, hoppet_over_mengdefelt = insert_vare(supabase, vare_data)
+
+        if hoppet_over_mengdefelt:
+            hoppet_over_mengde.append(ny_vare)
+
         varer_hjemme.add(normalisert_vare)
 
     info_meldinger = []
@@ -313,6 +318,12 @@ if legg_til_submit:
     if hoppet_over_hjemme:
         info_meldinger.append(
             f"Finnes allerede hjemme: {', '.join(hoppet_over_hjemme)}"
+        )
+
+    if hoppet_over_mengde:
+        info_meldinger.append(
+            "Mengde/enhet ble ikke lagret fordi tabellen mangler feltene: "
+            + ", ".join(hoppet_over_mengde)
         )
 
     if lagt_til:
