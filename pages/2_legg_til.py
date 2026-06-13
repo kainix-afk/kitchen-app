@@ -91,10 +91,6 @@ def sett_holdbarhetsdato(dager, input_key):
     st.session_state[input_key] = valgt_dato + timedelta(days=dager)
 
 
-def sett_holdbarhetsdato_fra_i_dag(dager, input_key):
-    st.session_state[input_key] = date.today() + timedelta(days=dager)
-
-
 def vare_kvittering(vare):
     navn = vare.get("navn", "").strip()
     mengde_tekst = format_mengde(vare)
@@ -218,7 +214,7 @@ with st.form("legg_til_varer_form"):
         with dato_cols[index]:
             st.form_submit_button(
                 label,
-                on_click=sett_holdbarhetsdato_fra_i_dag,
+                on_click=sett_holdbarhetsdato,
                 args=(dager, holdbar_til_key),
                 use_container_width=True,
             )

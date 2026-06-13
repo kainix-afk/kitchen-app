@@ -282,14 +282,27 @@ def kategori_key(vare):
     return "❓ Ukjent"
 
 
-def mengde_til_float(verdi):
+def mengde_til_input(verdi):
     if verdi in (None, ""):
-        return 0.0
+        return ""
 
     try:
-        return float(verdi)
+        return f"{float(verdi):g}"
     except (TypeError, ValueError):
-        return 0.0
+        tekst = str(verdi).strip()
+        return "" if tekst.lower() == "none" else tekst
+
+
+def mengde_fra_input(verdi):
+    tekst = str(verdi or "").strip().replace(",", ".")
+
+    if not tekst:
+        return None
+
+    try:
+        return float(tekst)
+    except ValueError:
+        return None
 
 
 def normalisert_enhet(enhet):
@@ -301,8 +314,127 @@ def normalisert_enhet(enhet):
     return enhet
 
 
+def er_schema_feil(error):
+    feiltekst = str(error).lower()
+    return any(
+        tekst in feiltekst
+        for tekst in ("column", "does not exist", "schema cache", "could not find")
+    )
+
+
 def oppdater_vare(vare_id, vare_data):
-    supabase.table(VARER_TABLE).update(vare_data).eq("id", vare_id).execute()
+    forsok = [
+        vare_data,
+        {
+            key: value
+            for key, value in vare_data.items()
+            if key not in ("mengde", "enhet")
+        },
+        {
+            key: value
+            for key, value in vare_data.items()
+            if key not in ("kategori", "mengde", "enhet")
+        },
+    ]
+    siste_feil = None
+
+    for data in forsok:
+        try:
+            supabase.table(VARER_TABLE).update(data).eq("id", vare_id).execute()
+            return [
+                key for key in vare_data
+                if key not in data
+            ]
+        except Exception as error:
+            siste_feil = error
+
+            if not er_schema_feil(error):
+                raise
+
+    raise siste_feil
+
+
+def vis_rediger_skjema(vare, holdbar_obj):
+    rediger_kategori = vare.get("kategori", "ukjent")
+
+    if rediger_kategori not in KATEGORIER:
+        rediger_kategori = "ukjent"
+
+    rediger_enhet = normalisert_enhet(vare.get("enhet", ""))
+    enhet_valg = ENHETER if rediger_enhet in ENHETER else ENHETER + [rediger_enhet]
+
+    with st.form(f"rediger_vare_{vare['id']}"):
+        st.markdown("**Rediger vare**")
+        st.write(f"Navn: **{vare.get('navn', '').capitalize()}**")
+        ny_holdbar_til = st.date_input(
+            "Holdbarhetsdato",
+            value=holdbar_obj or date.today() + timedelta(days=7),
+            key=f"rediger_holdbar_til_{vare['id']}",
+        )
+
+        rediger_mengde_col, rediger_enhet_col = st.columns(2)
+
+        with rediger_mengde_col:
+            ny_mengde_input = st.text_input(
+                "Mengde",
+                value=mengde_til_input(vare.get("mengde")),
+                placeholder="Tomt hvis ukjent",
+                key=f"rediger_mengde_{vare['id']}",
+            )
+
+        with rediger_enhet_col:
+            ny_enhet = st.selectbox(
+                "Enhet",
+                enhet_valg,
+                index=enhet_valg.index(rediger_enhet),
+                key=f"rediger_enhet_{vare['id']}",
+            )
+
+        ny_kategori = st.selectbox(
+            "Kategori",
+            KATEGORIER,
+            index=KATEGORIER.index(rediger_kategori),
+            key=f"rediger_kategori_{vare['id']}",
+        )
+
+        lagre_col, avbryt_col = st.columns(2)
+
+        with lagre_col:
+            lagre_redigering = st.form_submit_button(
+                "Lagre endringer",
+                use_container_width=True,
+            )
+
+        with avbryt_col:
+            avbryt_redigering = st.form_submit_button(
+                "Avbryt",
+                use_container_width=True,
+            )
+
+    if avbryt_redigering:
+        st.session_state.pop("rediger_vare_id", None)
+        st.rerun()
+
+    if lagre_redigering:
+        ny_mengde = mengde_fra_input(ny_mengde_input)
+        vare_data = {
+            "kategori": ny_kategori,
+            "utløpsdato": ny_holdbar_til.isoformat(),
+            "mengde": ny_mengde,
+            "enhet": ny_enhet if ny_mengde is not None else "",
+        }
+        utelatte_felter = oppdater_vare(vare["id"], vare_data)
+        st.session_state.vare_endret_feedback = f"Oppdaterte {vare.get('navn', '').capitalize()}."
+
+        if utelatte_felter:
+            st.session_state.vare_endret_feedback += (
+                " Noen felt ble hoppet over fordi tabellen mangler dem: "
+                + ", ".join(utelatte_felter)
+                + "."
+            )
+
+        st.session_state.pop("rediger_vare_id", None)
+        st.rerun()
 
 
 # 3. UI
@@ -555,91 +687,6 @@ for kategori, items in grupper.items():
                         unsafe_allow_html=True,
                     )
 
-                    if st.session_state.get("rediger_vare_id") == v["id"]:
-                        rediger_kategori = v.get("kategori", "ukjent")
-
-                        if rediger_kategori not in KATEGORIER:
-                            rediger_kategori = "ukjent"
-
-                        rediger_enhet = normalisert_enhet(v.get("enhet", ""))
-                        enhet_valg = ENHETER if rediger_enhet in ENHETER else ENHETER + [rediger_enhet]
-
-                        with st.form(f"rediger_vare_{v['id']}"):
-                            st.markdown("**Rediger vare**")
-                            nytt_navn = st.text_input(
-                                "Navn",
-                                value=v.get("navn", ""),
-                                key=f"rediger_navn_{v['id']}",
-                            )
-                            ny_holdbar_til = st.date_input(
-                                "Holdbar til",
-                                value=holdbar_obj or date.today() + timedelta(days=7),
-                                key=f"rediger_holdbar_til_{v['id']}",
-                            )
-
-                            rediger_mengde_col, rediger_enhet_col = st.columns(2)
-
-                            with rediger_mengde_col:
-                                ny_mengde = st.number_input(
-                                    "Mengde",
-                                    min_value=0.0,
-                                    step=1.0,
-                                    value=mengde_til_float(v.get("mengde")),
-                                    key=f"rediger_mengde_{v['id']}",
-                                )
-
-                            with rediger_enhet_col:
-                                ny_enhet = st.selectbox(
-                                    "Enhet",
-                                    enhet_valg,
-                                    index=enhet_valg.index(rediger_enhet),
-                                    key=f"rediger_enhet_{v['id']}",
-                                )
-
-                            ny_kategori = st.selectbox(
-                                "Kategori",
-                                KATEGORIER,
-                                index=KATEGORIER.index(rediger_kategori),
-                                key=f"rediger_kategori_{v['id']}",
-                            )
-
-                            lagre_col, avbryt_col = st.columns(2)
-
-                            with lagre_col:
-                                lagre_redigering = st.form_submit_button(
-                                    "Lagre endringer",
-                                    use_container_width=True,
-                                )
-
-                            with avbryt_col:
-                                avbryt_redigering = st.form_submit_button(
-                                    "Avbryt",
-                                    use_container_width=True,
-                                )
-
-                        if avbryt_redigering:
-                            st.session_state.pop("rediger_vare_id", None)
-                            st.rerun()
-
-                        if lagre_redigering:
-                            nytt_navn = nytt_navn.strip()
-
-                            if not nytt_navn:
-                                st.warning("Navn kan ikke være tomt.")
-                                st.stop()
-
-                            vare_data = {
-                                "navn": nytt_navn.lower(),
-                                "kategori": ny_kategori,
-                                "utløpsdato": ny_holdbar_til.isoformat(),
-                                "mengde": ny_mengde if ny_mengde > 0 else None,
-                                "enhet": ny_enhet if ny_mengde > 0 else "",
-                            }
-                            oppdater_vare(v["id"], vare_data)
-                            st.session_state.vare_endret_feedback = f"Oppdaterte {nytt_navn}."
-                            st.session_state.pop("rediger_vare_id", None)
-                            st.rerun()
-
                     brukt_col, kastet_col = st.columns(2)
 
                     with brukt_col:
@@ -704,7 +751,18 @@ for kategori, items in grupper.items():
 
                             st.rerun()
 
-                    if st.checkbox("Detaljer", key=f"detaljer_{v['id']}"):
+                    detaljer_key = f"vis_detaljer_{v['id']}"
+                    detaljer_tekst = "Skjul detaljer" if st.session_state.get(detaljer_key) else "Vis detaljer"
+
+                    if st.button(detaljer_tekst, key=f"toggle_detaljer_{v['id']}", use_container_width=True):
+                        st.session_state[detaljer_key] = not st.session_state.get(detaljer_key, False)
+
+                        if not st.session_state[detaljer_key] and st.session_state.get("rediger_vare_id") == v["id"]:
+                            st.session_state.pop("rediger_vare_id", None)
+
+                        st.rerun()
+
+                    if st.session_state.get(detaljer_key):
                         st.write(f"Lagt til: {dato_formatert}")
 
                         if mengde_tekst:
@@ -724,43 +782,32 @@ for kategori, items in grupper.items():
                         st.write(f"**Grunn:** {grunn}")
                         st.write(f"**Urgency:** {urgency}")
 
-                        ny_holdbar_til = st.date_input(
-                            "Endre holdbarhetsdato",
-                            value=holdbar_obj or date.today() + timedelta(days=7),
-                            key=f"endre_holdbar_til_{v['id']}_{raw_holdbar or 'ukjent'}"
-                        )
+                        if st.session_state.get("rediger_vare_id") == v["id"]:
+                            vis_rediger_skjema(v, holdbar_obj)
+                        else:
+                            rediger_col, slett_col = st.columns(2)
 
-                        if st.button("Lagre dato", key=f"lagre_dato_{v['id']}", use_container_width=True):
-                            supabase.table(VARER_TABLE).update({
-                                "utløpsdato": ny_holdbar_til.isoformat()
-                            }).eq("id", v["id"]).execute()
+                            with rediger_col:
+                                if st.button("Rediger vare", key=f"rediger_{v['id']}", use_container_width=True):
+                                    st.session_state.rediger_vare_id = v["id"]
+                                    st.rerun()
 
-                            st.session_state.dato_endret_feedback = f"Oppdaterte dato for {v['navn']}."
-                            st.rerun()
-
-                    tom_col, rediger_col, slett_col = st.columns([2, 1, 1])
-
-                    with rediger_col:
-                        if st.button("Rediger", key=f"rediger_{v['id']}", use_container_width=True):
-                            st.session_state.rediger_vare_id = v["id"]
-                            st.rerun()
-
-                    with slett_col:
-                        if st.button("Slett", key=f"slett_{v['id']}", use_container_width=True):
-                            supabase.table(VARER_TABLE).update({
-                                "status": "slettet"
-                            }).eq("id", v["id"]).execute()
-                            st.session_state.pop("spist_feedback", None)
-                            st.session_state.pop("rediger_vare_id", None)
-                            st.session_state.inline_slettet_vare = {
-                                **v,
-                                "__slettet_placeholder": True,
-                            }
-                            st.session_state.angre_handling = {
-                                "handling": "slettet",
-                                "vare_id": v["id"],
-                                "navn": v["navn"],
-                            }
-                            st.rerun()
+                            with slett_col:
+                                if st.button("Slett", key=f"slett_{v['id']}", use_container_width=True):
+                                    supabase.table(VARER_TABLE).update({
+                                        "status": "slettet"
+                                    }).eq("id", v["id"]).execute()
+                                    st.session_state.pop("spist_feedback", None)
+                                    st.session_state.pop("rediger_vare_id", None)
+                                    st.session_state.inline_slettet_vare = {
+                                        **v,
+                                        "__slettet_placeholder": True,
+                                    }
+                                    st.session_state.angre_handling = {
+                                        "handling": "slettet",
+                                        "vare_id": v["id"],
+                                        "navn": v["navn"],
+                                    }
+                                    st.rerun()
 
                 st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
