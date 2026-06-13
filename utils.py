@@ -18,7 +18,9 @@ def vis_debug_miljo():
     miljo = "DEV" if ENV == "dev" else "LIVE"
     supabase_url = st.secrets.get("SUPABASE_URL", "")
     project_ref = urlparse(supabase_url).netloc.split(".")[0] if supabase_url else "ukjent"
-    st.caption(f"DEBUG miljø: {miljo} · tabell: {VARER_TABLE} · Supabase project: {project_ref}")
+    st.write("DEBUG miljø:", miljo)
+    st.write("DEBUG tabell:", VARER_TABLE)
+    st.write("DEBUG Supabase project:", project_ref)
 
 def normalize(text):
     return text.strip().lower()
