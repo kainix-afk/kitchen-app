@@ -282,26 +282,13 @@ def kategori_key(vare):
     return "❓ Ukjent"
 
 
-def mengde_til_input(verdi):
+def mengde_til_number(verdi):
     if verdi in (None, ""):
-        return ""
-
-    try:
-        return f"{float(verdi):g}"
-    except (TypeError, ValueError):
-        tekst = str(verdi).strip()
-        return "" if tekst.lower() == "none" else tekst
-
-
-def mengde_fra_input(verdi):
-    tekst = str(verdi or "").strip().replace(",", ".")
-
-    if not tekst:
         return None
 
     try:
-        return float(tekst)
-    except ValueError:
+        return float(verdi)
+    except (TypeError, ValueError):
         return None
 
 
@@ -375,9 +362,11 @@ def vis_rediger_skjema(vare, holdbar_obj):
         rediger_mengde_col, rediger_enhet_col = st.columns(2)
 
         with rediger_mengde_col:
-            ny_mengde_input = st.text_input(
+            ny_mengde = st.number_input(
                 "Mengde",
-                value=mengde_til_input(vare.get("mengde")),
+                min_value=0.0,
+                step=1.0,
+                value=mengde_til_number(vare.get("mengde")),
                 placeholder="Tomt hvis ukjent",
                 key=f"rediger_mengde_{vare['id']}",
             )
@@ -416,12 +405,11 @@ def vis_rediger_skjema(vare, holdbar_obj):
         st.rerun()
 
     if lagre_redigering:
-        ny_mengde = mengde_fra_input(ny_mengde_input)
         vare_data = {
             "kategori": ny_kategori,
             "utløpsdato": ny_holdbar_til.isoformat(),
             "mengde": ny_mengde,
-            "enhet": ny_enhet if ny_mengde is not None else "",
+            "enhet": ny_enhet,
         }
         utelatte_felter = oppdater_vare(vare["id"], vare_data)
         st.session_state.vare_endret_feedback = f"Oppdaterte {vare.get('navn', '').capitalize()}."

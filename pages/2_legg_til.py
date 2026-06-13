@@ -233,7 +233,8 @@ with st.form("legg_til_varer_form"):
             "Mengde",
             min_value=0.0,
             step=1.0,
-            value=1.0
+            value=None,
+            placeholder="Tomt hvis ukjent",
         )
 
     with enhet_col:
@@ -294,11 +295,9 @@ if legg_til_submit:
             "kategori": kategori,
             "utløpsdato": holdbar_til.isoformat(),
             "status": "aktiv",
+            "mengde": mengde,
+            "enhet": enhet,
         }
-
-        if enhet:
-            vare_data["mengde"] = mengde
-            vare_data["enhet"] = enhet
 
         lagt_til.append(vare_kvittering(vare_data))
         insert_vare(supabase, vare_data)
