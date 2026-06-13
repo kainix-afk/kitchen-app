@@ -1,6 +1,5 @@
 from datetime import date
 from html import escape
-from urllib.parse import urlparse
 import streamlit as st
 from supabase import create_client
 
@@ -12,15 +11,6 @@ if ENV == "dev":
 else:
     VARER_TABLE = "varer"
     KASTET_TABLE = "kastet"
-
-
-def vis_debug_miljo():
-    miljo = "DEV" if ENV == "dev" else "LIVE"
-    supabase_url = st.secrets.get("SUPABASE_URL", "")
-    project_ref = urlparse(supabase_url).netloc.split(".")[0] if supabase_url else "ukjent"
-    st.write("DEBUG miljø:", miljo)
-    st.write("DEBUG tabell:", VARER_TABLE)
-    st.write("DEBUG Supabase project:", project_ref)
 
 def normalize(text):
     return text.strip().lower()
@@ -69,8 +59,6 @@ def insert_vare(supabase, vare):
     try:
         return supabase.table(VARER_TABLE).insert(vare).execute(), False
     except Exception as error:
-        st.error(f"DEBUG insert feilet: {error}")
-        raise
         feiltekst = str(error).lower()
         har_mengdefelt = "mengde" in vare or "enhet" in vare
         mangler_mengdefelt = any(
