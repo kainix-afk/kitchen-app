@@ -2,7 +2,7 @@ import streamlit as st
 import re
 from datetime import date, timedelta
 import utils
-from utils import VARER_TABLE, format_mengde, get_supabase_client, get_varer_clean, normalize, vis_i_dag_stripe
+from utils import VARER_TABLE, format_mengde, get_supabase_client, get_varer_clean, normalize, vis_debug_miljo, vis_i_dag_stripe
 
 supabase = get_supabase_client()
 
@@ -117,6 +117,7 @@ def vare_finnes_hjemme(varenavn):
 vis_i_dag_stripe()
 
 st.title("➕ Legg til varer")
+vis_debug_miljo()
 
 st.markdown(
     """

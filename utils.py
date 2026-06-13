@@ -12,6 +12,11 @@ else:
     VARER_TABLE = "varer"
     KASTET_TABLE = "kastet"
 
+
+def vis_debug_miljo():
+    miljo = "DEV" if ENV == "dev" else "LIVE"
+    st.caption(f"DEBUG miljø: {miljo} · tabell: {VARER_TABLE}")
+
 def normalize(text):
     return text.strip().lower()
 
